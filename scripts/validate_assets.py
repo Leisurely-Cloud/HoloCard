@@ -14,6 +14,7 @@ def validate(project):
     # the other RGBA layers: same canvas, real alpha, nothing empty.
     names=['subject','background','lineart','text']
     if (root/'assets'/'effects.png').exists():names.insert(1,'effects')
+    if (root/'assets'/'back.png').exists():names.append('back')
     for name in names:
         file=root/'assets'/(name+'.png')
         im=Image.open(file)
@@ -44,6 +45,8 @@ def validate(project):
             alpha=im.getchannel('A');hist=alpha.histogram();transparent=sum(hist[:16])/sum(hist);solid=sum(hist[128:])/sum(hist)
             if transparent<.01 or solid<.001:raise ValueError(name+' needs both visible and truly transparent pixels')
             item.update(transparent_fraction=round(transparent,4),visible_fraction=round(solid,4))
+        if name=='back' and 'A' in im.getbands() and im.getchannel('A').getextrema()[0]<250:
+            raise ValueError('Back artwork must be opaque')
         if name=='lineart':
             lo,hi=im.convert('L').getextrema()
             if lo>80 or hi<230:raise ValueError('Line art needs dark contours on white')

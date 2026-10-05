@@ -12,7 +12,8 @@
     "background": "./assets/background.png",
     "text": "./assets/text.png",
     "lineart": "./assets/lineart.png",
-    "effects": "./assets/effects.png"
+    "effects": "./assets/effects.png",
+    "back": "./assets/back.png"
   },
   "parameters": {
     "subjectScale": 1.25,
@@ -28,5 +29,13 @@
       -0.06,
       -0.085
     ]
+  },
+  "backDesign": {
+    "primary": "#d6edff",
+    "secondary": "#82b3d2"
+  },
+  "ui": {
+    "brandName": "光屿",
+    "brandEnglish": "HOLO ATELIER"
   }
 }

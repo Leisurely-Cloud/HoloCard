@@ -1,5 +1,5 @@
 ---
-name: RuiC-card-skill
+name: ruic-card-skill
 description: Generate interactive 3D holographic collectible-card websites from a user description or reference image, using layered artwork, Blender and Three.js. Includes project-local Blender installation, reusable parallax materials and browser verification. Host-agnostic — any harness that runs a multimodal model can use it, since the model draws the layer artwork and inspects the rendered frames. Use when the user asks for 全息闪卡, 镭射卡, 3D 卡牌网页, a holographic collectible card site, or an editable card.blend.
 ---
 
@@ -30,6 +30,12 @@ Give the layers clearly different depths. Two layers at the same depth fuse into
 5. Run `scripts/run_pipeline.py --project <project>`. It validates, locates Blender and installs an official portable copy into `<project>/tools/` when absent, builds the editable scene, renders the preview, exports the geometry, copies the viewer from `assets/web-template/`, and installs the viewer's dependencies. Python with Pillow, Node.js with npm, and network access for the first Blender download are required. Read the errors instead of retrying the same blocker.
 6. Start the site with `node <project>/web/server.mjs`, keep it alive, and open the URL it prints. Read [references/verification.md](references/verification.md), then run `node scripts/verify_web.mjs <project>`: it launches its own headless Chromium and its own copy of the viewer, drives drag, flip, reset, zoom, the keyboard, every slider (including 特效景深), the finish options, the screenshot download, a ~390 px viewport and the reduced-motion setting, compares real captured frames, writes `<project>/verification/report.json` plus screenshots, and exits non-zero on any failure. It needs no GUI and runs as root, so a container or CI session is not a reason to skip it. A green report is evidence about controls, not about looks: still open the page and look at the render, both tilts and the layers yourself. A `ready` flag proves none of that.
 7. Deliver the working URL, the source project, the editable `.blend` and the renders. Say plainly that the Blender node graph is rebuilt in GLSL for the browser — glTF carries geometry and material roles only — so the two are close but not pixel-identical. Publish a website or repository only when that is asked for. For a requested skill ZIP, run `scripts/package_skill.py`: it enforces a text-only allowlist, and output projects, artwork, models with embedded images, credentials, dependencies and caches never belong in it.
+
+## Theme backs, relief and viewer polish
+
+For complete collectible cards, prefer a dedicated opaque `assets/back.png` themed to the front instead of the placeholder initial. Preserve a requested plain back or existing supplied artwork. Read [references/backs-and-relief.md](references/backs-and-relief.md) when creating a back, using pop-out layers, or styling the viewer. The pipeline validates, copies and packs the optional back; the browser adds exact title/edition text and angle-dependent foil.
+
+The bundled viewer includes blue/silver controls and responsive artwork information. Adapt the brand, palette and copy to the card; do not reuse a character name or provenance from a previous project. Respect whether the user wants existing online assets, new illustration, or both.
 
 ## Non-obvious invariants
 

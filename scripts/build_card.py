@@ -159,6 +159,17 @@ ep=bsdf(et,'卡边黑色金属',50,0); ep.inputs['Base Color'].default_value=(0,
 eo=node(et,'ShaderNodeOutputMaterial','镭射卡边',390,0); link(et,ep,0,eo,'Surface')
 gold,gt=material('04 · 古金压边'); gp=bsdf(gt,'古金金属',0,0); gp.inputs['Base Color'].default_value=(.63,.37,.10,1); gp.inputs['Roughness'].default_value=.29; go=node(gt,'ShaderNodeOutputMaterial','金边',360,0); link(gt,gp,0,go,0)
 back,bt=material('05 · 背面靛蓝'); bp=bsdf(bt,'靛蓝背面',0,0); bp.inputs['Base Color'].default_value=(.009,.02,.036,1); bo=node(bt,'ShaderNodeOutputMaterial','背面',350,0); link(bt,bp,0,bo,0)
+# An optional theme-specific back is packed into the editable scene as well.
+if (R/'assets/back.png').exists():
+    back_image=bpy.data.images.load(str(R/'assets/back.png'),check_existing=True)
+    back_image.pack();back_image.filepath='//assets/back.png'
+    bu=node(bt,'ShaderNodeTexCoord','Back UV',-600,0)
+    bf=node(bt,'ShaderNodeVectorMath','Back horizontal orientation',-400,0)
+    bf.operation='MULTIPLY_ADD';bf.inputs[1].default_value=(-1,1,1);bf.inputs[2].default_value=(1,0,0)
+    link(bt,bu,'UV',bf,0)
+    bi=node(bt,'ShaderNodeTexImage','Theme back artwork',-200,0);bi.image=back_image
+    link(bt,bf,0,bi,'Vector');link(bt,bi,'Color',bp,'Base Color')
+    link(bt,bi,'Color',bp,'Emission Color');bp.inputs['Emission Strength'].default_value=.22
 # Collection and parent pivot keep every imported plane's X rotation visibly at 90 degrees.
 cardcol=bpy.data.collections.new('卡牌 · 可复用成品'); scene.collection.children.link(cardcol)
 refcol=bpy.data.collections.new('素材平面 · 背景参考'); scene.collection.children.link(refcol)
@@ -211,7 +222,7 @@ relief_objs=[]
 if RELIEF:
     if mix.inputs[0].links: t.links.remove(mix.inputs[0].links[0])
     def relief_y(d): return -(0.541+1.818*d)
-    textob.location.y=relief_y(layers_cfg.get('text',{}).get('depth',.72))
+    textob.location.y=relief_y(layers_cfg.get('text',{}).get('depth',.72)) + (.12 if layers_cfg.get('textTitle') else 0)
     def apply_crop_uv(o,w,h,crop_uv):
         me=o.data; layer=me.uv_layers.active or me.uv_layers[0]
         u0,v0,u1,v1=crop_uv

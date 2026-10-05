@@ -31208,6 +31208,8 @@ void main() {
   col*=1.-strength()*.12*(1.-film(vUv));
   col+=film(vUv)*sweep(vUv)*strength()*.055;
   col=mix(col,art.rgb,art.a);
+  float detail = smoothstep(.12,.8,dot(art.rgb,vec3(.299,.587,.114)));
+  col += film(vUv)*sweep(vUv)*strength()*(.018+.075*detail);
   gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
   #include <colorspace_fragment>
 }
@@ -31251,11 +31253,27 @@ function canvasTexture(canvas) {
   texture.colorSpace = NoColorSpace;
   return texture;
 }
-function backTexture() {
+function backTexture(image) {
   const c = document.createElement("canvas");
   c.width = 1024;
   c.height = 1536;
   const ctx = c.getContext("2d");
+  if (image) {
+    ctx.drawImage(image, 0, 0, 1024, 1536);
+    ctx.textAlign = "center";
+    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
+    ctx.font = "500 19px Arial";
+    ctx.fillText(config.collection || "ART COLLECTION", 512, 122);
+    ctx.fillStyle = config.backDesign?.primary || "#d6edff";
+    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
+    ctx.fillText(config.title, 512, 195);
+    ctx.font = '23px "Microsoft YaHei", sans-serif';
+    ctx.fillText(config.subtitle || "", 512, 1370);
+    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
+    ctx.font = "500 19px Arial";
+    ctx.fillText(`${config.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
+    return canvasTexture(c);
+  }
   ctx.strokeStyle = "#aeb5aa";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(56, 56, 912, 1424);
@@ -31340,6 +31358,13 @@ async function init() {
   ])
     $(id).textContent = config[key] || "";
   $("about-title").textContent = [config.subtitle, config.title].filter(Boolean).join(" / ");
+  const brand = document.querySelector(".wordmark-cn");
+  if (brand) brand.firstChild.textContent = config.ui?.brandName || "\u5149\u5C7F";
+  const brandEn = document.querySelector(".wordmark-en");
+  if (brandEn) brandEn.textContent = config.ui?.brandEnglish || "HOLO ATELIER";
+  for (const [key, value] of Object.entries(config.ui?.palette || {})) {
+    if (["ink", "muted", "accent", "focus", "control", "line"].includes(key)) document.documentElement.style.setProperty(`--${key}`, value);
+  }
   await document.fonts.load("500 42px Atelier");
   try {
     renderer = new WebGLRenderer({
@@ -31374,6 +31399,7 @@ async function init() {
       (name) => textureLoader.loadAsync(config.assets[name])
     )
   );
+  const backArt = config.assets.back ? await textureLoader.loadAsync(config.assets.back) : null;
   const line = config.assets.lineart ? await textureLoader.loadAsync(config.assets.lineart) : new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   line.needsUpdate = true;
   const hasFx = !!config.assets.effects;
@@ -31396,7 +31422,7 @@ async function init() {
     tText: { value: textures[2] },
     tLine: { value: line },
     tEffects: { value: effects },
-    tBack: { value: backTexture() },
+    tBack: { value: backTexture(backArt?.image) },
     uTime: { value: 0 },
     uView: { value: new Vector3(0, 0, 1) },
     uFit: { value: new Vector2(...fit) },
@@ -31429,7 +31455,7 @@ async function init() {
     web_front: material(frontFragment),
     web_back: material(backFragment),
     web_edge: material(edgeFragment),
-    web_gold: new MeshBasicMaterial({ color: "#c9a24a" })
+    web_gold: new MeshBasicMaterial({ color: "#b8d6e9" })
   };
   for (const [role, fragment2] of [["web_subject", subjectFragment], ["web_effects", effectsFragment], ["web_text", textFragment]]) {
     materials[role] = material(fragment2);
@@ -31536,10 +31562,14 @@ function fallback3D(error) {
   front.append(foil);
   const back = document.createElement("div");
   back.className = "face3d back3d";
+  if (config.assets.back) {
+    back.style.backgroundImage = `url("${config.assets.back}")`;
+    back.style.backgroundSize = "cover";
+  }
   const backMark = document.createElement("span");
   backMark.className = "back-mark";
-  backMark.textContent = "\u767D\u76F8";
-  back.append(backMark);
+  backMark.textContent = config.ui?.brandName || "\u5149\u5C7F";
+  if (!config.assets.back) back.append(backMark);
   card.append(front, back);
   flipper.append(card);
   wrap.append(flipper);
@@ -31701,19 +31731,16 @@ function flip(value = !flipped) {
   targetX = 0;
   faceLabels();
 }
-var RELIEF_STEP = 0.22;
 function layoutRelief() {
-  const z = Number($("depth").value);
-  const invScale = 1 / Number($("scale").value);
-  const place = (meshes, dz) => {
-    for (const mesh of meshes) {
-      mesh.position.z = z + dz;
-      mesh.scale.copy(mesh.userData.baseScale).multiplyScalar(invScale);
-    }
-  };
-  place(reliefLayers.subject, 0);
-  place(reliefLayers.effects, RELIEF_STEP);
-  place(reliefLayers.text, RELIEF_STEP * 2);
+  const subjectZ = 0.541 + 1.818 * Number($("depth").value);
+  const effectsZ = 0.541 + 1.818 * Number($("fx-depth").value);
+  const titleZ = Math.max(subjectZ, effectsZ) + 0.4;
+  for (const mesh of reliefLayers.subject) {
+    mesh.position.z = subjectZ;
+    mesh.scale.copy(mesh.userData.baseScale).multiplyScalar(1 / Number($("scale").value));
+  }
+  for (const mesh of reliefLayers.effects) mesh.position.z = effectsZ;
+  for (const mesh of reliefLayers.text) mesh.position.z = titleZ;
 }
 function updateInput(id, name) {
   const input = $(id);
@@ -31950,6 +31977,12 @@ Promise.race([
 /*! Bundled license information:
 
 three/build/three.core.js:
+  (**
+   * @license
+   * Copyright 2010-2025 Three.js Authors
+   * SPDX-License-Identifier: MIT
+   *)
+
 three/build/three.module.js:
   (**
    * @license

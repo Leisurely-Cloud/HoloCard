@@ -21,7 +21,8 @@ def main():
     web=root/'web';shutil.copytree(skill/'assets'/'web-template',web,dirs_exist_ok=True)
     cfg=json.loads(config.read_text(encoding='utf-8-sig'))
     layers=['subject','background','text','lineart']
-    if (root/'assets'/'effects.png').exists():layers.append('effects')
+    for optional in ['effects','back']:
+        if (root/'assets'/(optional+'.png')).exists():layers.append(optional)
     cfg['assets']={name:'./assets/'+name+'.png' for name in layers};cfg['assets']['model']='./assets/card.glb'
     (web/'card-config.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf8')
     for name in layers:shutil.copy2(root/'assets'/(name+'.png'),web/'assets'/(name+'.png'))

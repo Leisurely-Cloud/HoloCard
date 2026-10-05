@@ -5,15 +5,16 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#fafafa" />
     <link rel="icon" href="data:," />
-    <title>白相 · White Atelier</title>
+    <title>光屿 · Holo Atelier</title>
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./ui.css" />
     <script type="module" src="./app.bundle.js"></script>
   </head>
   <body>
     <header class="masthead">
-      <a class="wordmark" href="./" aria-label="白相首页"
-        ><span class="wordmark-cn">白相<span class="brand-dot"></span></span
-        ><span class="wordmark-en">WHITE ATELIER</span></a
+      <a class="wordmark" href="./" aria-label="光屿首页"
+        ><span class="brand-emblem" aria-hidden="true"><span style="font-size:26px;line-height:1">✦</span></span><span class="brand-type"><span class="wordmark-cn">光屿<span class="brand-dot"></span></span
+        ><span class="wordmark-en">HOLO ATELIER</span></span></a
       >
       <span class="collection-label"
         >个人典藏 <span>/</span> <span id="edition">STUDY 001</span></span
@@ -26,7 +27,7 @@
           title="作品信息"
           disabled
         >
-          <i data-lucide="info"></i>
+          <i data-lucide="info"></i><span class="action-label">作品信息</span>
         </button>
         <button
           class="icon-button save-button"
@@ -35,7 +36,7 @@
           title="保存卡片图片"
           disabled
         >
-          <i data-lucide="download"></i>
+          <i data-lucide="download"></i><span class="action-label">保存卡面</span>
         </button>
       </div>
     </header>
@@ -53,7 +54,7 @@
           </div>
         </div>
         <div class="stage-note" aria-hidden="true">
-          <span>ART STUDY</span><span id="view-label">01 / FRONT</span>
+          <span>拖动探索层次 · 滚轮缩放</span><span id="view-label">01 / FRONT</span>
         </div>
         <div class="parameter-panel" id="parameter-panel">
           <div class="panel-heading">
@@ -79,6 +80,7 @@
       </section>
       <section class="artwork-bar" aria-label="作品与材质">
         <div class="artwork-title">
+          <div class="artwork-kicker">HOLOGRAPHIC COLLECTION</div>
           <div class="title-line">
             <h1 id="card-title">BOND</h1>
             <span id="subtitle">共生</span>
@@ -168,13 +170,13 @@
       >
         <i data-lucide="x"></i>
       </button>
-      <p class="dialog-mark">白相</p>
+      <p class="dialog-mark">光屿</p>
       <h2 id="about-title">共生 / BOND</h2>
       <p id="about-description"></p>
       <dl>
         <div>
           <dt>来源</dt>
-          <dd>用户提供的参考作品</dd>
+          <dd>详见项目素材来源说明</dd>
         </div>
         <div>
           <dt>呈现</dt>

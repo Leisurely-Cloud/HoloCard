@@ -1,3 +1,17 @@
+## Leisurely-Cloud 的增强版本
+
+基于 [HRuiCcc/RuiC-card-skill](https://github.com/HRuiCcc/RuiC-card-skill) 的 fork，保留原项目 MIT 许可证与作者署名。
+
+新增与改进：
+- 专属主题背面：自动校验和复制 back.png，打包进 Blender；网页精确排版标题与编号，并加入随视角变化的光泽。
+- 破框浮雕：人物、水流等特效与标题独立分层，特效景深单独生效，修复透明标题牌重叠问题。
+- 界面与手机排版：主题标识、信息/保存按钮、正背面切换、材质标签、景深面板；品牌与配色可配置。
+- 修复 Blender 下载请求和无特效层的网页验证。
+
+详细配置见 [背面与浮雕说明](references/backs-and-relief.md)。新版流水线实测构建成功，网页交互 33/33 项通过。
+
+---
+
 # ✦ RuiC Card Skill
 
 [English](README.en.md) | **中文**
