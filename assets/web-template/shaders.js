@@ -138,4 +138,3 @@ void main(){vec4 art=texture2D(tText,vUv);if(art.a<.02)discard;gl_FragColor=vec4
   #include <colorspace_fragment>
 }
 `;
-
