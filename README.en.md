@@ -4,6 +4,8 @@ Fork of [HRuiCcc/RuiC-card-skill](https://github.com/HRuiCcc/RuiC-card-skill), r
 
 Adds themed back artwork with exact browser typography and angle-dependent foil; independent relief depth controls; polished responsive viewer controls and configurable branding. Also fixes coincident transparent text planes, download requests, and verification with an absent effects layer. See [backs and relief](references/backs-and-relief.md). A fresh pipeline build and all 33 browser checks passed.
 
+See [development boundaries and regression checks](references/development.md). Pipeline stages and viewer modules are separated while preserving the existing CLI and configuration.
+
 ---
 
 # ✦ RuiC Card Skill

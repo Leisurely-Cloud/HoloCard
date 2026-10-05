@@ -10,6 +10,8 @@
 
 详细配置见 [背面与浮雕说明](references/backs-and-relief.md)。新版流水线实测构建成功，网页交互 33/33 项通过。
 
+开发结构与回归测试见 [开发说明](references/development.md)。流水线和网页模块已拆分，保留原 CLI 与配置格式。
+
 ---
 
 # ✦ RuiC Card Skill

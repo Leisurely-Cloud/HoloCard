@@ -1,3 +1,206 @@
+// shaders.js
+var vertex = `
+varying vec2 vUv;
+void main() {
+  vUv = vec2(uv.x, 1.0 - uv.y);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+var common = `
+precision highp float;
+varying vec2 vUv;
+uniform float uTime, uFoil, uScale, uDepth, uBgDepth, uFinish, uHasLine, uRelief, uSafeScale, uFxDepth, uHasFx;
+uniform vec2 uFit, uSafeOffset;
+uniform vec3 uView;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float inside(vec2 p) { return step(0.,p.x)*step(0.,p.y)*step(p.x,1.)*step(p.y,1.); }
+vec2 parallax(vec2 uv, float depth) {
+  return uv + uView.xy / max(abs(uView.z), .4) * depth * .10;
+}
+vec3 spectrum(float phase) {
+  return .66 + .25 * cos(6.28318 * (phase + vec3(0., .33, .67)));
+}
+// Only "original" (uFinish ~ 2) disables the foil; pearl/silver/gold all use it.
+float strength() { return abs(uFinish - 2.0) < 0.05 ? 0. : uFoil; }
+vec3 film(vec2 uv) {
+  float phase = uv.x * .85 + uv.y * .55 + uView.x * 1.5 - uView.y * .9;
+  if (uFinish > 2.5) {
+    // \u70EB\u91D1 (gold foil): warm gold laminate that shifts with the viewing angle.
+    float hi = 0.5 + 0.5 * sin(phase * 6.28318);
+    float glint = 0.5 + 0.5 * cos((phase + 0.25) * 6.28318);
+    vec3 deep = vec3(.72, .50, .20);
+    vec3 bright = vec3(1.00, .90, .60);
+    return mix(deep, bright, hi * .7 + glint * .3);
+  }
+  vec3 color = spectrum(phase);
+  return mix(color, vec3(dot(color,vec3(.2126,.7152,.0722))), step(.5,uFinish));
+}
+float sweep(vec2 uv) {
+  return pow(.5+.5*sin((uv.x*.72+uv.y*.45+uView.x*1.2+uView.y*.6)*6.283),10.);
+}
+`;
+var frontFragment = common + `
+uniform sampler2D tSubject, tBackground, tText, tLine, tEffects;
+void main() {
+  vec2 uv = vUv;
+  vec2 su = ((parallax(uv,uDepth)-.5)*uScale/uFit+.5)*uSafeScale+uSafeOffset;
+  vec2 bu = parallax(uv,uBgDepth);
+  vec4 subject = texture2D(tSubject,clamp(su,0.,1.));
+  subject.a *= inside(su)*(1.-uRelief);
+  vec3 bg = texture2D(tBackground,clamp(bu,0.,1.)).rgb;
+  vec3 col = mix(bg,subject.rgb,subject.a);
+  if (uFinish > 2.5) col = col * vec3(1.02, .95, .78) + vec3(.05, .012, 0.0);
+  // Effects layer floats between the subject and the text: above the character,
+  // below the typography, with its own mid-depth parallax.
+  vec2 eu = parallax(uv,uFxDepth);
+  vec4 fx = texture2D(tEffects,clamp(eu,0.,1.));
+  col = mix(col,fx.rgb,fx.a*(1.-uRelief)*uHasFx);
+  vec3 foil = film(uv);
+  float amount = strength();
+  float luminance = dot(col,vec3(.2126,.7152,.0722));
+  float band = sweep(uv);
+  // Laminate changes with the card-local viewing direction; black print stays readable.
+  float goldBoost = uFinish > 2.5 ? 1.7 : 1.0;
+  col *= 1. - amount * .21 * (1.-foil) * (.2 + band*.8);
+  col += foil * amount * band * goldBoost * (.065 + .11*(1.-luminance));
+  float edge = 1.-smoothstep(.015,.06,min(min(uv.x,1.-uv.x),min(uv.y,1.-uv.y)));
+  col = mix(col,foil*.75+.21,edge*amount*(uFinish > 2.5 ? .42 : .3));
+  vec2 cell = floor(uv*vec2(480.,720.));
+  float flake = step(.994,hash(cell))*pow(.5+.5*sin(hash(cell+8.)*30.+uView.x*20.+uTime*.6),10.);
+  col += foil*flake*amount*.13;
+  float line = (1.-smoothstep(.06,.25,texture2D(tLine,clamp(su,0.,1.)).r))*uHasLine;
+  col += line*inside(su)*subject.a*band*amount*.055;
+  vec4 text = texture2D(tText,uv);
+  col = mix(col,text.rgb,text.a*(1.-uRelief));
+  gl_FragColor = vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
+  #include <colorspace_fragment>
+}
+`;
+var edgeFragment = common + `
+void main() {
+  vec3 col = mix(vec3(.66,.69,.67),film(vUv)*.6+.35,strength()*.7);
+  gl_FragColor=vec4(pow(col,vec3(2.2)),1.);
+  #include <colorspace_fragment>
+}
+`;
+var backFragment = common + `
+uniform sampler2D tBack;
+void main() {
+  vec2 uv=vec2(1.-vUv.x,vUv.y);
+  vec4 art=texture2D(tBack,uv);
+  vec3 col=vec3(.956,.961,.946);
+  col*=1.-strength()*.12*(1.-film(vUv));
+  col+=film(vUv)*sweep(vUv)*strength()*.055;
+  col=mix(col,art.rgb,art.a);
+  float detail = smoothstep(.12,.8,dot(art.rgb,vec3(.299,.587,.114)));
+  col += film(vUv)*sweep(vUv)*strength()*(.018+.075*detail);
+  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
+  #include <colorspace_fragment>
+}
+`;
+var subjectFragment = common + `
+uniform sampler2D tSubject;
+void main() {
+  vec4 art=texture2D(tSubject,vUv);
+  if(art.a<.06)discard;
+  vec2 px=1./vec2(1024.,1630.);
+  float inner=min(min(texture2D(tSubject,vUv+vec2(px.x*2.,0.)).a,texture2D(tSubject,vUv-vec2(px.x*2.,0.)).a),min(texture2D(tSubject,vUv+vec2(0.,px.y*2.)).a,texture2D(tSubject,vUv-vec2(0.,px.y*2.)).a));
+  vec3 col=art.rgb;
+  col+=film(vUv)*sweep(vUv)*strength()*.10;
+  col=mix(col,vec3(.86,.72,.40),(1.-inner)*.22);
+  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),art.a);
+  #include <colorspace_fragment>
+}
+`;
+var effectsFragment = common + `
+uniform sampler2D tEffects;
+void main() {
+  vec4 art=texture2D(tEffects,vUv);
+  // The relief effects layer is a pre-cut RGBA asset: use its real alpha so
+  // thorn/spark deco keeps its silhouette instead of a color-channel matte.
+  float alpha=art.a;
+  if(alpha<.015)discard;
+  vec3 col=art.rgb;
+  col+=film(vUv)*sweep(vUv)*strength()*.08;
+  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),alpha);
+  #include <colorspace_fragment>
+}
+`;
+var textFragment = common + `
+uniform sampler2D tText;
+void main(){vec4 art=texture2D(tText,vUv);if(art.a<.02)discard;gl_FragColor=vec4(pow(art.rgb,vec3(2.2)),art.a);
+  #include <colorspace_fragment>
+}
+`;
+
+// back-art.js
+function createBackCanvas(config2, image) {
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 1536;
+  const ctx = c.getContext("2d");
+  if (image) {
+    ctx.drawImage(image, 0, 0, 1024, 1536);
+    ctx.textAlign = "center";
+    ctx.fillStyle = config2.backDesign?.secondary || "#82b3d2";
+    ctx.font = "500 19px Arial";
+    ctx.fillText(config2.collection || "ART COLLECTION", 512, 122);
+    ctx.fillStyle = config2.backDesign?.primary || "#d6edff";
+    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
+    ctx.fillText(config2.title, 512, 195);
+    ctx.font = '23px "Microsoft YaHei", sans-serif';
+    ctx.fillText(config2.subtitle || "", 512, 1370);
+    ctx.fillStyle = config2.backDesign?.secondary || "#82b3d2";
+    ctx.font = "500 19px Arial";
+    ctx.fillText(`${config2.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
+    return c;
+  }
+  ctx.strokeStyle = "#aeb5aa";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(56, 56, 912, 1424);
+  ctx.strokeRect(72, 72, 880, 1392);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#50594e";
+  ctx.font = "500 420px Atelier, Georgia, serif";
+  ctx.fillText((config2.title || "A").slice(0, 1), 512, 846);
+  ctx.font = "24px Arial";
+  ctx.fillStyle = "#737b70";
+  ctx.fillText(config2.collection || "WHITE ATELIER", 512, 245);
+  ctx.font = '34px "Songti SC", serif';
+  ctx.fillText(config2.subtitle || config2.title, 512, 1020);
+  ctx.font = "18px Arial";
+  ctx.fillText(config2.edition || "ART STUDY", 512, 1337);
+  ctx.beginPath();
+  ctx.moveTo(460, 1113);
+  ctx.lineTo(564, 1113);
+  ctx.stroke();
+  return c;
+}
+
+// relief.js
+function layoutReliefLayers(reliefLayers2, { subjectDepth, effectsDepth, subjectScale }) {
+  const subjectZ = 0.541 + 1.818 * subjectDepth;
+  const effectsZ = 0.541 + 1.818 * effectsDepth;
+  const titleZ = Math.max(subjectZ, effectsZ) + 0.4;
+  for (const mesh of reliefLayers2.subject) {
+    mesh.position.z = subjectZ;
+    mesh.scale.copy(mesh.userData.baseScale).multiplyScalar(1 / subjectScale);
+  }
+  for (const mesh of reliefLayers2.effects) mesh.position.z = effectsZ;
+  for (const mesh of reliefLayers2.text) mesh.position.z = titleZ;
+}
+
+// viewer-ui.js
+function applyBrand(config2, document2) {
+  const brand = document2.querySelector(".wordmark-cn");
+  if (brand) brand.firstChild.textContent = config2.ui?.brandName || "\u5149\u5C7F";
+  const brandEn = document2.querySelector(".wordmark-en");
+  if (brandEn) brandEn.textContent = config2.ui?.brandEnglish || "HOLO ATELIER";
+  for (const [key, value] of Object.entries(config2.ui?.palette || {})) {
+    if (["ink", "muted", "accent", "focus", "control", "line"].includes(key)) document2.documentElement.style.setProperty(`--${key}`, value);
+  }
+}
+
 // node_modules/three/build/three.core.js
 var REVISION = "180";
 var CullFaceNone = 0;
@@ -18207,7 +18410,7 @@ var color_fragment = "#if defined( USE_COLOR_ALPHA )\n	diffuseColor *= vColor;\n
 var color_pars_fragment = "#if defined( USE_COLOR_ALPHA )\n	varying vec4 vColor;\n#elif defined( USE_COLOR )\n	varying vec3 vColor;\n#endif";
 var color_pars_vertex = "#if defined( USE_COLOR_ALPHA )\n	varying vec4 vColor;\n#elif defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR ) || defined( USE_BATCHING_COLOR )\n	varying vec3 vColor;\n#endif";
 var color_vertex = "#if defined( USE_COLOR_ALPHA )\n	vColor = vec4( 1.0 );\n#elif defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR ) || defined( USE_BATCHING_COLOR )\n	vColor = vec3( 1.0 );\n#endif\n#ifdef USE_COLOR\n	vColor *= color;\n#endif\n#ifdef USE_INSTANCING_COLOR\n	vColor.xyz *= instanceColor.xyz;\n#endif\n#ifdef USE_BATCHING_COLOR\n	vec3 batchingColor = getBatchingColor( getIndirectIndex( gl_DrawID ) );\n	vColor.xyz *= batchingColor.xyz;\n#endif";
-var common = "#define PI 3.141592653589793\n#define PI2 6.283185307179586\n#define PI_HALF 1.5707963267948966\n#define RECIPROCAL_PI 0.3183098861837907\n#define RECIPROCAL_PI2 0.15915494309189535\n#define EPSILON 1e-6\n#ifndef saturate\n#define saturate( a ) clamp( a, 0.0, 1.0 )\n#endif\n#define whiteComplement( a ) ( 1.0 - saturate( a ) )\nfloat pow2( const in float x ) { return x*x; }\nvec3 pow2( const in vec3 x ) { return x*x; }\nfloat pow3( const in float x ) { return x*x*x; }\nfloat pow4( const in float x ) { float x2 = x*x; return x2*x2; }\nfloat max3( const in vec3 v ) { return max( max( v.x, v.y ), v.z ); }\nfloat average( const in vec3 v ) { return dot( v, vec3( 0.3333333 ) ); }\nhighp float rand( const in vec2 uv ) {\n	const highp float a = 12.9898, b = 78.233, c = 43758.5453;\n	highp float dt = dot( uv.xy, vec2( a,b ) ), sn = mod( dt, PI );\n	return fract( sin( sn ) * c );\n}\n#ifdef HIGH_PRECISION\n	float precisionSafeLength( vec3 v ) { return length( v ); }\n#else\n	float precisionSafeLength( vec3 v ) {\n		float maxComponent = max3( abs( v ) );\n		return length( v / maxComponent ) * maxComponent;\n	}\n#endif\nstruct IncidentLight {\n	vec3 color;\n	vec3 direction;\n	bool visible;\n};\nstruct ReflectedLight {\n	vec3 directDiffuse;\n	vec3 directSpecular;\n	vec3 indirectDiffuse;\n	vec3 indirectSpecular;\n};\n#ifdef USE_ALPHAHASH\n	varying vec3 vPosition;\n#endif\nvec3 transformDirection( in vec3 dir, in mat4 matrix ) {\n	return normalize( ( matrix * vec4( dir, 0.0 ) ).xyz );\n}\nvec3 inverseTransformDirection( in vec3 dir, in mat4 matrix ) {\n	return normalize( ( vec4( dir, 0.0 ) * matrix ).xyz );\n}\nmat3 transposeMat3( const in mat3 m ) {\n	mat3 tmp;\n	tmp[ 0 ] = vec3( m[ 0 ].x, m[ 1 ].x, m[ 2 ].x );\n	tmp[ 1 ] = vec3( m[ 0 ].y, m[ 1 ].y, m[ 2 ].y );\n	tmp[ 2 ] = vec3( m[ 0 ].z, m[ 1 ].z, m[ 2 ].z );\n	return tmp;\n}\nbool isPerspectiveMatrix( mat4 m ) {\n	return m[ 2 ][ 3 ] == - 1.0;\n}\nvec2 equirectUv( in vec3 dir ) {\n	float u = atan( dir.z, dir.x ) * RECIPROCAL_PI2 + 0.5;\n	float v = asin( clamp( dir.y, - 1.0, 1.0 ) ) * RECIPROCAL_PI + 0.5;\n	return vec2( u, v );\n}\nvec3 BRDF_Lambert( const in vec3 diffuseColor ) {\n	return RECIPROCAL_PI * diffuseColor;\n}\nvec3 F_Schlick( const in vec3 f0, const in float f90, const in float dotVH ) {\n	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );\n	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );\n}\nfloat F_Schlick( const in float f0, const in float f90, const in float dotVH ) {\n	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );\n	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );\n} // validated";
+var common2 = "#define PI 3.141592653589793\n#define PI2 6.283185307179586\n#define PI_HALF 1.5707963267948966\n#define RECIPROCAL_PI 0.3183098861837907\n#define RECIPROCAL_PI2 0.15915494309189535\n#define EPSILON 1e-6\n#ifndef saturate\n#define saturate( a ) clamp( a, 0.0, 1.0 )\n#endif\n#define whiteComplement( a ) ( 1.0 - saturate( a ) )\nfloat pow2( const in float x ) { return x*x; }\nvec3 pow2( const in vec3 x ) { return x*x; }\nfloat pow3( const in float x ) { return x*x*x; }\nfloat pow4( const in float x ) { float x2 = x*x; return x2*x2; }\nfloat max3( const in vec3 v ) { return max( max( v.x, v.y ), v.z ); }\nfloat average( const in vec3 v ) { return dot( v, vec3( 0.3333333 ) ); }\nhighp float rand( const in vec2 uv ) {\n	const highp float a = 12.9898, b = 78.233, c = 43758.5453;\n	highp float dt = dot( uv.xy, vec2( a,b ) ), sn = mod( dt, PI );\n	return fract( sin( sn ) * c );\n}\n#ifdef HIGH_PRECISION\n	float precisionSafeLength( vec3 v ) { return length( v ); }\n#else\n	float precisionSafeLength( vec3 v ) {\n		float maxComponent = max3( abs( v ) );\n		return length( v / maxComponent ) * maxComponent;\n	}\n#endif\nstruct IncidentLight {\n	vec3 color;\n	vec3 direction;\n	bool visible;\n};\nstruct ReflectedLight {\n	vec3 directDiffuse;\n	vec3 directSpecular;\n	vec3 indirectDiffuse;\n	vec3 indirectSpecular;\n};\n#ifdef USE_ALPHAHASH\n	varying vec3 vPosition;\n#endif\nvec3 transformDirection( in vec3 dir, in mat4 matrix ) {\n	return normalize( ( matrix * vec4( dir, 0.0 ) ).xyz );\n}\nvec3 inverseTransformDirection( in vec3 dir, in mat4 matrix ) {\n	return normalize( ( vec4( dir, 0.0 ) * matrix ).xyz );\n}\nmat3 transposeMat3( const in mat3 m ) {\n	mat3 tmp;\n	tmp[ 0 ] = vec3( m[ 0 ].x, m[ 1 ].x, m[ 2 ].x );\n	tmp[ 1 ] = vec3( m[ 0 ].y, m[ 1 ].y, m[ 2 ].y );\n	tmp[ 2 ] = vec3( m[ 0 ].z, m[ 1 ].z, m[ 2 ].z );\n	return tmp;\n}\nbool isPerspectiveMatrix( mat4 m ) {\n	return m[ 2 ][ 3 ] == - 1.0;\n}\nvec2 equirectUv( in vec3 dir ) {\n	float u = atan( dir.z, dir.x ) * RECIPROCAL_PI2 + 0.5;\n	float v = asin( clamp( dir.y, - 1.0, 1.0 ) ) * RECIPROCAL_PI + 0.5;\n	return vec2( u, v );\n}\nvec3 BRDF_Lambert( const in vec3 diffuseColor ) {\n	return RECIPROCAL_PI * diffuseColor;\n}\nvec3 F_Schlick( const in vec3 f0, const in float f90, const in float dotVH ) {\n	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );\n	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );\n}\nfloat F_Schlick( const in float f0, const in float f90, const in float dotVH ) {\n	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );\n	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );\n} // validated";
 var cube_uv_reflection_fragment = "#ifdef ENVMAP_TYPE_CUBE_UV\n	#define cubeUV_minMipLevel 4.0\n	#define cubeUV_minTileSize 16.0\n	float getFace( vec3 direction ) {\n		vec3 absDirection = abs( direction );\n		float face = - 1.0;\n		if ( absDirection.x > absDirection.z ) {\n			if ( absDirection.x > absDirection.y )\n				face = direction.x > 0.0 ? 0.0 : 3.0;\n			else\n				face = direction.y > 0.0 ? 1.0 : 4.0;\n		} else {\n			if ( absDirection.z > absDirection.y )\n				face = direction.z > 0.0 ? 2.0 : 5.0;\n			else\n				face = direction.y > 0.0 ? 1.0 : 4.0;\n		}\n		return face;\n	}\n	vec2 getUV( vec3 direction, float face ) {\n		vec2 uv;\n		if ( face == 0.0 ) {\n			uv = vec2( direction.z, direction.y ) / abs( direction.x );\n		} else if ( face == 1.0 ) {\n			uv = vec2( - direction.x, - direction.z ) / abs( direction.y );\n		} else if ( face == 2.0 ) {\n			uv = vec2( - direction.x, direction.y ) / abs( direction.z );\n		} else if ( face == 3.0 ) {\n			uv = vec2( - direction.z, direction.y ) / abs( direction.x );\n		} else if ( face == 4.0 ) {\n			uv = vec2( - direction.x, direction.z ) / abs( direction.y );\n		} else {\n			uv = vec2( direction.x, direction.y ) / abs( direction.z );\n		}\n		return 0.5 * ( uv + 1.0 );\n	}\n	vec3 bilinearCubeUV( sampler2D envMap, vec3 direction, float mipInt ) {\n		float face = getFace( direction );\n		float filterInt = max( cubeUV_minMipLevel - mipInt, 0.0 );\n		mipInt = max( mipInt, cubeUV_minMipLevel );\n		float faceSize = exp2( mipInt );\n		highp vec2 uv = getUV( direction, face ) * ( faceSize - 2.0 ) + 1.0;\n		if ( face > 2.0 ) {\n			uv.y += faceSize;\n			face -= 3.0;\n		}\n		uv.x += face * faceSize;\n		uv.x += filterInt * 3.0 * cubeUV_minTileSize;\n		uv.y += 4.0 * ( exp2( CUBEUV_MAX_MIP ) - faceSize );\n		uv.x *= CUBEUV_TEXEL_WIDTH;\n		uv.y *= CUBEUV_TEXEL_HEIGHT;\n		#ifdef texture2DGradEXT\n			return texture2DGradEXT( envMap, uv, vec2( 0.0 ), vec2( 0.0 ) ).rgb;\n		#else\n			return texture2D( envMap, uv ).rgb;\n		#endif\n	}\n	#define cubeUV_r0 1.0\n	#define cubeUV_m0 - 2.0\n	#define cubeUV_r1 0.8\n	#define cubeUV_m1 - 1.0\n	#define cubeUV_r4 0.4\n	#define cubeUV_m4 2.0\n	#define cubeUV_r5 0.305\n	#define cubeUV_m5 3.0\n	#define cubeUV_r6 0.21\n	#define cubeUV_m6 4.0\n	float roughnessToMip( float roughness ) {\n		float mip = 0.0;\n		if ( roughness >= cubeUV_r1 ) {\n			mip = ( cubeUV_r0 - roughness ) * ( cubeUV_m1 - cubeUV_m0 ) / ( cubeUV_r0 - cubeUV_r1 ) + cubeUV_m0;\n		} else if ( roughness >= cubeUV_r4 ) {\n			mip = ( cubeUV_r1 - roughness ) * ( cubeUV_m4 - cubeUV_m1 ) / ( cubeUV_r1 - cubeUV_r4 ) + cubeUV_m1;\n		} else if ( roughness >= cubeUV_r5 ) {\n			mip = ( cubeUV_r4 - roughness ) * ( cubeUV_m5 - cubeUV_m4 ) / ( cubeUV_r4 - cubeUV_r5 ) + cubeUV_m4;\n		} else if ( roughness >= cubeUV_r6 ) {\n			mip = ( cubeUV_r5 - roughness ) * ( cubeUV_m6 - cubeUV_m5 ) / ( cubeUV_r5 - cubeUV_r6 ) + cubeUV_m5;\n		} else {\n			mip = - 2.0 * log2( 1.16 * roughness );		}\n		return mip;\n	}\n	vec4 textureCubeUV( sampler2D envMap, vec3 sampleDir, float roughness ) {\n		float mip = clamp( roughnessToMip( roughness ), cubeUV_m0, CUBEUV_MAX_MIP );\n		float mipF = fract( mip );\n		float mipInt = floor( mip );\n		vec3 color0 = bilinearCubeUV( envMap, sampleDir, mipInt );\n		if ( mipF == 0.0 ) {\n			return vec4( color0, 1.0 );\n		} else {\n			vec3 color1 = bilinearCubeUV( envMap, sampleDir, mipInt + 1.0 );\n			return vec4( mix( color0, color1, mipF ), 1.0 );\n		}\n	}\n#endif";
 var defaultnormal_vertex = "vec3 transformedNormal = objectNormal;\n#ifdef USE_TANGENT\n	vec3 transformedTangent = objectTangent;\n#endif\n#ifdef USE_BATCHING\n	mat3 bm = mat3( batchingMatrix );\n	transformedNormal /= vec3( dot( bm[ 0 ], bm[ 0 ] ), dot( bm[ 1 ], bm[ 1 ] ), dot( bm[ 2 ], bm[ 2 ] ) );\n	transformedNormal = bm * transformedNormal;\n	#ifdef USE_TANGENT\n		transformedTangent = bm * transformedTangent;\n	#endif\n#endif\n#ifdef USE_INSTANCING\n	mat3 im = mat3( instanceMatrix );\n	transformedNormal /= vec3( dot( im[ 0 ], im[ 0 ] ), dot( im[ 1 ], im[ 1 ] ), dot( im[ 2 ], im[ 2 ] ) );\n	transformedNormal = im * transformedNormal;\n	#ifdef USE_TANGENT\n		transformedTangent = im * transformedTangent;\n	#endif\n#endif\ntransformedNormal = normalMatrix * transformedNormal;\n#ifdef FLIP_SIDED\n	transformedNormal = - transformedNormal;\n#endif\n#ifdef USE_TANGENT\n	transformedTangent = ( modelViewMatrix * vec4( transformedTangent, 0.0 ) ).xyz;\n	#ifdef FLIP_SIDED\n		transformedTangent = - transformedTangent;\n	#endif\n#endif";
 var displacementmap_pars_vertex = "#ifdef USE_DISPLACEMENTMAP\n	uniform sampler2D displacementMap;\n	uniform float displacementScale;\n	uniform float displacementBias;\n#endif";
@@ -18349,7 +18552,7 @@ var ShaderChunk = {
   color_pars_fragment,
   color_pars_vertex,
   color_vertex,
-  common,
+  common: common2,
   cube_uv_reflection_fragment,
   defaultnormal_vertex,
   displacementmap_pars_vertex,
@@ -23202,7 +23405,7 @@ function WebGLRenderStates(extensions) {
     dispose
   };
 }
-var vertex = "void main() {\n	gl_Position = vec4( position, 1.0 );\n}";
+var vertex2 = "void main() {\n	gl_Position = vec4( position, 1.0 );\n}";
 var fragment = "uniform sampler2D shadow_pass;\nuniform vec2 resolution;\nuniform float radius;\n#include <packing>\nvoid main() {\n	const float samples = float( VSM_SAMPLES );\n	float mean = 0.0;\n	float squared_mean = 0.0;\n	float uvStride = samples <= 1.0 ? 0.0 : 2.0 / ( samples - 1.0 );\n	float uvStart = samples <= 1.0 ? 0.0 : - 1.0;\n	for ( float i = 0.0; i < samples; i ++ ) {\n		float uvOffset = uvStart + i * uvStride;\n		#ifdef HORIZONTAL_PASS\n			vec2 distribution = unpackRGBATo2Half( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( uvOffset, 0.0 ) * radius ) / resolution ) );\n			mean += distribution.x;\n			squared_mean += distribution.y * distribution.y + distribution.x * distribution.x;\n		#else\n			float depth = unpackRGBAToDepth( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( 0.0, uvOffset ) * radius ) / resolution ) );\n			mean += depth;\n			squared_mean += depth * depth;\n		#endif\n	}\n	mean = mean / samples;\n	squared_mean = squared_mean / samples;\n	float std_dev = sqrt( squared_mean - mean * mean );\n	gl_FragColor = pack2HalfToRGBA( vec2( mean, std_dev ) );\n}";
 function WebGLShadowMap(renderer2, objects, capabilities) {
   let _frustum = new Frustum();
@@ -23217,7 +23420,7 @@ function WebGLShadowMap(renderer2, objects, capabilities) {
       resolution: { value: new Vector2() },
       radius: { value: 4 }
     },
-    vertexShader: vertex,
+    vertexShader: vertex2,
     fragmentShader: fragment
   });
   const shadowMaterialHorizontal = shadowMaterialVertical.clone();
@@ -31115,185 +31318,13 @@ var settings = [
   ["fx-depth", "uFxDepth"],
   ["bg-depth", "uBgDepth"]
 ];
-var vertex2 = `
-varying vec2 vUv;
-void main() {
-  vUv = vec2(uv.x, 1.0 - uv.y);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-var common2 = `
-precision highp float;
-varying vec2 vUv;
-uniform float uTime, uFoil, uScale, uDepth, uBgDepth, uFinish, uHasLine, uRelief, uSafeScale, uFxDepth, uHasFx;
-uniform vec2 uFit, uSafeOffset;
-uniform vec3 uView;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-float inside(vec2 p) { return step(0.,p.x)*step(0.,p.y)*step(p.x,1.)*step(p.y,1.); }
-vec2 parallax(vec2 uv, float depth) {
-  return uv + uView.xy / max(abs(uView.z), .4) * depth * .10;
-}
-vec3 spectrum(float phase) {
-  return .66 + .25 * cos(6.28318 * (phase + vec3(0., .33, .67)));
-}
-// Only "original" (uFinish ~ 2) disables the foil; pearl/silver/gold all use it.
-float strength() { return abs(uFinish - 2.0) < 0.05 ? 0. : uFoil; }
-vec3 film(vec2 uv) {
-  float phase = uv.x * .85 + uv.y * .55 + uView.x * 1.5 - uView.y * .9;
-  if (uFinish > 2.5) {
-    // \u70EB\u91D1 (gold foil): warm gold laminate that shifts with the viewing angle.
-    float hi = 0.5 + 0.5 * sin(phase * 6.28318);
-    float glint = 0.5 + 0.5 * cos((phase + 0.25) * 6.28318);
-    vec3 deep = vec3(.72, .50, .20);
-    vec3 bright = vec3(1.00, .90, .60);
-    return mix(deep, bright, hi * .7 + glint * .3);
-  }
-  vec3 color = spectrum(phase);
-  return mix(color, vec3(dot(color,vec3(.2126,.7152,.0722))), step(.5,uFinish));
-}
-float sweep(vec2 uv) {
-  return pow(.5+.5*sin((uv.x*.72+uv.y*.45+uView.x*1.2+uView.y*.6)*6.283),10.);
-}
-`;
-var frontFragment = common2 + `
-uniform sampler2D tSubject, tBackground, tText, tLine, tEffects;
-void main() {
-  vec2 uv = vUv;
-  vec2 su = ((parallax(uv,uDepth)-.5)*uScale/uFit+.5)*uSafeScale+uSafeOffset;
-  vec2 bu = parallax(uv,uBgDepth);
-  vec4 subject = texture2D(tSubject,clamp(su,0.,1.));
-  subject.a *= inside(su)*(1.-uRelief);
-  vec3 bg = texture2D(tBackground,clamp(bu,0.,1.)).rgb;
-  vec3 col = mix(bg,subject.rgb,subject.a);
-  if (uFinish > 2.5) col = col * vec3(1.02, .95, .78) + vec3(.05, .012, 0.0);
-  // Effects layer floats between the subject and the text: above the character,
-  // below the typography, with its own mid-depth parallax.
-  vec2 eu = parallax(uv,uFxDepth);
-  vec4 fx = texture2D(tEffects,clamp(eu,0.,1.));
-  col = mix(col,fx.rgb,fx.a*(1.-uRelief)*uHasFx);
-  vec3 foil = film(uv);
-  float amount = strength();
-  float luminance = dot(col,vec3(.2126,.7152,.0722));
-  float band = sweep(uv);
-  // Laminate changes with the card-local viewing direction; black print stays readable.
-  float goldBoost = uFinish > 2.5 ? 1.7 : 1.0;
-  col *= 1. - amount * .21 * (1.-foil) * (.2 + band*.8);
-  col += foil * amount * band * goldBoost * (.065 + .11*(1.-luminance));
-  float edge = 1.-smoothstep(.015,.06,min(min(uv.x,1.-uv.x),min(uv.y,1.-uv.y)));
-  col = mix(col,foil*.75+.21,edge*amount*(uFinish > 2.5 ? .42 : .3));
-  vec2 cell = floor(uv*vec2(480.,720.));
-  float flake = step(.994,hash(cell))*pow(.5+.5*sin(hash(cell+8.)*30.+uView.x*20.+uTime*.6),10.);
-  col += foil*flake*amount*.13;
-  float line = (1.-smoothstep(.06,.25,texture2D(tLine,clamp(su,0.,1.)).r))*uHasLine;
-  col += line*inside(su)*subject.a*band*amount*.055;
-  vec4 text = texture2D(tText,uv);
-  col = mix(col,text.rgb,text.a*(1.-uRelief));
-  gl_FragColor = vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-var edgeFragment = common2 + `
-void main() {
-  vec3 col = mix(vec3(.66,.69,.67),film(vUv)*.6+.35,strength()*.7);
-  gl_FragColor=vec4(pow(col,vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-var backFragment = common2 + `
-uniform sampler2D tBack;
-void main() {
-  vec2 uv=vec2(1.-vUv.x,vUv.y);
-  vec4 art=texture2D(tBack,uv);
-  vec3 col=vec3(.956,.961,.946);
-  col*=1.-strength()*.12*(1.-film(vUv));
-  col+=film(vUv)*sweep(vUv)*strength()*.055;
-  col=mix(col,art.rgb,art.a);
-  float detail = smoothstep(.12,.8,dot(art.rgb,vec3(.299,.587,.114)));
-  col += film(vUv)*sweep(vUv)*strength()*(.018+.075*detail);
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-var subjectFragment = common2 + `
-uniform sampler2D tSubject;
-void main() {
-  vec4 art=texture2D(tSubject,vUv);
-  if(art.a<.06)discard;
-  vec2 px=1./vec2(1024.,1630.);
-  float inner=min(min(texture2D(tSubject,vUv+vec2(px.x*2.,0.)).a,texture2D(tSubject,vUv-vec2(px.x*2.,0.)).a),min(texture2D(tSubject,vUv+vec2(0.,px.y*2.)).a,texture2D(tSubject,vUv-vec2(0.,px.y*2.)).a));
-  vec3 col=art.rgb;
-  col+=film(vUv)*sweep(vUv)*strength()*.10;
-  col=mix(col,vec3(.86,.72,.40),(1.-inner)*.22);
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),art.a);
-  #include <colorspace_fragment>
-}
-`;
-var effectsFragment = common2 + `
-uniform sampler2D tEffects;
-void main() {
-  vec4 art=texture2D(tEffects,vUv);
-  // The relief effects layer is a pre-cut RGBA asset: use its real alpha so
-  // thorn/spark deco keeps its silhouette instead of a color-channel matte.
-  float alpha=art.a;
-  if(alpha<.015)discard;
-  vec3 col=art.rgb;
-  col+=film(vUv)*sweep(vUv)*strength()*.08;
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),alpha);
-  #include <colorspace_fragment>
-}
-`;
-var textFragment = common2 + `
-uniform sampler2D tText;
-void main(){vec4 art=texture2D(tText,vUv);if(art.a<.02)discard;gl_FragColor=vec4(pow(art.rgb,vec3(2.2)),art.a);
-  #include <colorspace_fragment>
-}
-`;
 function canvasTexture(canvas) {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = NoColorSpace;
   return texture;
 }
 function backTexture(image) {
-  const c = document.createElement("canvas");
-  c.width = 1024;
-  c.height = 1536;
-  const ctx = c.getContext("2d");
-  if (image) {
-    ctx.drawImage(image, 0, 0, 1024, 1536);
-    ctx.textAlign = "center";
-    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
-    ctx.fillText(config.collection || "ART COLLECTION", 512, 122);
-    ctx.fillStyle = config.backDesign?.primary || "#d6edff";
-    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
-    ctx.fillText(config.title, 512, 195);
-    ctx.font = '23px "Microsoft YaHei", sans-serif';
-    ctx.fillText(config.subtitle || "", 512, 1370);
-    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
-    ctx.fillText(`${config.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
-    return canvasTexture(c);
-  }
-  ctx.strokeStyle = "#aeb5aa";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(56, 56, 912, 1424);
-  ctx.strokeRect(72, 72, 880, 1392);
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#50594e";
-  ctx.font = "500 420px Atelier, Georgia, serif";
-  ctx.fillText((config.title || "A").slice(0, 1), 512, 846);
-  ctx.font = "24px Arial";
-  ctx.fillStyle = "#737b70";
-  ctx.fillText(config.collection || "WHITE ATELIER", 512, 245);
-  ctx.font = '34px "Songti SC", serif';
-  ctx.fillText(config.subtitle || config.title, 512, 1020);
-  ctx.font = "18px Arial";
-  ctx.fillText(config.edition || "ART STUDY", 512, 1337);
-  ctx.beginPath();
-  ctx.moveTo(460, 1113);
-  ctx.lineTo(564, 1113);
-  ctx.stroke();
-  return canvasTexture(c);
+  return canvasTexture(createBackCanvas(config, image));
 }
 function addShadow() {
   const c = document.createElement("canvas");
@@ -31358,13 +31389,7 @@ async function init() {
   ])
     $(id).textContent = config[key] || "";
   $("about-title").textContent = [config.subtitle, config.title].filter(Boolean).join(" / ");
-  const brand = document.querySelector(".wordmark-cn");
-  if (brand) brand.firstChild.textContent = config.ui?.brandName || "\u5149\u5C7F";
-  const brandEn = document.querySelector(".wordmark-en");
-  if (brandEn) brandEn.textContent = config.ui?.brandEnglish || "HOLO ATELIER";
-  for (const [key, value] of Object.entries(config.ui?.palette || {})) {
-    if (["ink", "muted", "accent", "focus", "control", "line"].includes(key)) document.documentElement.style.setProperty(`--${key}`, value);
-  }
+  applyBrand(config, document);
   await document.fonts.load("500 42px Atelier");
   try {
     renderer = new WebGLRenderer({
@@ -31447,7 +31472,7 @@ async function init() {
   };
   const material = (fragment2) => new ShaderMaterial({
     uniforms,
-    vertexShader: vertex2,
+    vertexShader: vertex,
     fragmentShader: fragment2,
     side: FrontSide
   });
@@ -31732,15 +31757,11 @@ function flip(value = !flipped) {
   faceLabels();
 }
 function layoutRelief() {
-  const subjectZ = 0.541 + 1.818 * Number($("depth").value);
-  const effectsZ = 0.541 + 1.818 * Number($("fx-depth").value);
-  const titleZ = Math.max(subjectZ, effectsZ) + 0.4;
-  for (const mesh of reliefLayers.subject) {
-    mesh.position.z = subjectZ;
-    mesh.scale.copy(mesh.userData.baseScale).multiplyScalar(1 / Number($("scale").value));
-  }
-  for (const mesh of reliefLayers.effects) mesh.position.z = effectsZ;
-  for (const mesh of reliefLayers.text) mesh.position.z = titleZ;
+  layoutReliefLayers(reliefLayers, {
+    subjectDepth: Number($("depth").value),
+    effectsDepth: Number($("fx-depth").value),
+    subjectScale: Number($("scale").value)
+  });
 }
 function updateInput(id, name) {
   const input = $(id);

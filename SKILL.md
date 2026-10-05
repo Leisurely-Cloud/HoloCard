@@ -50,6 +50,8 @@ The bundled viewer includes blue/silver controls and responsive artwork informat
 - glTF's Y-up conversion changes Blender's local axes. Compute `uView` in the canonical card root frame rather than the converted front mesh's frame, and restore the exported V coordinate exactly once. Test both turn directions: one direction will smear the UVs or invert the parallax if the frame is wrong.
 - The viewer exposes `window.__holo` (`ready`, `config`, `renderer`, `root`, `uniforms`, `reset`, `flip`, `getState`) for testing, and falls back to a CSS-3D card when WebGL is unavailable. Use the hook for scripted checks; a page that renders does not prove the shaders compiled.
 
+For repository maintenance and module boundaries, see [references/development.md](references/development.md).
+
 ## Resources
 
 - `scripts/run_pipeline.py`: one command from prepared assets to a served card — validate, Blender build, render, GLB export, viewer assembly, dependency install.

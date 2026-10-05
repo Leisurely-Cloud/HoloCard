@@ -7,14 +7,13 @@ is converted to real alpha via checkerboard_to_alpha.py before validation.
 from pathlib import Path
 from PIL import Image,ImageStat
 import argparse,json
+from project_config import layer_names
 
 def validate(project):
     root=Path(project);report={};size=None
     # The effects layer is optional, but when present it is held to the same bar as
     # the other RGBA layers: same canvas, real alpha, nothing empty.
-    names=['subject','background','lineart','text']
-    if (root/'assets'/'effects.png').exists():names.insert(1,'effects')
-    if (root/'assets'/'back.png').exists():names.append('back')
+    names=layer_names(root)
     for name in names:
         file=root/'assets'/(name+'.png')
         im=Image.open(file)
