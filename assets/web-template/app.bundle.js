@@ -201,6 +201,138 @@ function applyBrand(config2, document2) {
   }
 }
 
+// gestures.js
+function createGestures({ rotate, zoom: zoom2, start = () => {
+}, end = () => {
+} }) {
+  const pointers = /* @__PURE__ */ new Map();
+  const distance = () => {
+    const [a, b] = [...pointers.values()];
+    return b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  return {
+    down(id, x, y) {
+      if (pointers.size >= 2 || pointers.has(id)) return false;
+      pointers.set(id, { x, y });
+      if (pointers.size === 1) start();
+      return true;
+    },
+    move(id, x, y) {
+      const previous = pointers.get(id);
+      if (!previous) return;
+      const before = distance();
+      pointers.set(id, { x, y });
+      if (pointers.size === 2) {
+        const after = distance();
+        if (before > 0 && after > 0) zoom2(after / before);
+      } else rotate(x - previous.x, y - previous.y);
+    },
+    up(id) {
+      if (pointers.delete(id) && pointers.size === 0) end();
+    }
+  };
+}
+function bindCardGestures(stage2, callbacks) {
+  const gestures = createGestures(callbacks);
+  stage2.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, input, a")) return;
+    if (!gestures.down(event.pointerId, event.clientX, event.clientY)) return;
+    stage2.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse") stage2.focus({ preventScroll: true });
+  });
+  stage2.addEventListener("pointermove", (event) => gestures.move(event.pointerId, event.clientX, event.clientY));
+  for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    stage2.addEventListener(name, (event) => gestures.up(event.pointerId));
+  }
+}
+
+// render-loop.js
+function createRenderLoop({
+  render,
+  continuous,
+  visible = () => true,
+  request = requestAnimationFrame,
+  cancel = cancelAnimationFrame,
+  now = () => performance.now()
+}) {
+  let pending = null, dirty = true, lastRender = -Infinity, activeUntil = 0;
+  const queue = () => {
+    if (pending === null && visible()) pending = request(tick);
+  };
+  const tick = (time) => {
+    pending = null;
+    if (!visible()) return;
+    const moving = continuous();
+    const interval = time < activeUntil ? 0 : 1e3 / 30;
+    if (dirty || (moving || time < activeUntil) && time - lastRender >= interval - 0.5) {
+      dirty = false;
+      lastRender = time;
+      render(time);
+    }
+    if (dirty || moving || time < activeUntil) queue();
+  };
+  return {
+    wake(interactive = false) {
+      dirty = true;
+      if (interactive) activeUntil = now() + 500;
+      queue();
+    },
+    pause() {
+      if (pending !== null) cancel(pending);
+      pending = null;
+      dirty = true;
+    }
+  };
+}
+function viewerPixelRatio(deviceRatio, coarsePointer, width) {
+  return Math.min(deviceRatio || 1, coarsePointer && width <= 760 ? 1.5 : 2);
+}
+
+// loading.js
+function createLoadState(notify) {
+  let terminal = false;
+  return {
+    get terminal() {
+      return terminal;
+    },
+    update(message, completed = 0, total = 1) {
+      if (!terminal) notify({ status: "loading", message, completed, total });
+    },
+    finish() {
+      if (terminal) return false;
+      terminal = true;
+      notify({ status: "ready", message: "\u4F5C\u54C1\u5DF2\u5C31\u7EEA", completed: 1, total: 1 });
+      return true;
+    },
+    fail(message) {
+      if (terminal) return false;
+      terminal = true;
+      notify({ status: "error", message });
+      return true;
+    }
+  };
+}
+function createLoadingView(element) {
+  const message = element.querySelector(".loading-message");
+  const progress = element.querySelector("progress");
+  const retry = element.querySelector("button");
+  retry.onclick = () => location.reload();
+  return createLoadState((state) => {
+    element.dataset.status = state.status;
+    element.hidden = state.status === "ready";
+    element.classList.toggle("error", state.status === "error");
+    element.setAttribute("role", state.status === "error" ? "alert" : "status");
+    element.parentElement.setAttribute("aria-busy", String(state.status === "loading"));
+    message.textContent = state.message;
+    progress.hidden = state.status !== "loading";
+    if (state.total > 0) {
+      progress.max = state.total;
+      progress.value = state.completed;
+    }
+    retry.hidden = state.status !== "error";
+  });
+}
+
 // node_modules/three/build/three.core.js
 var REVISION = "180";
 var CullFaceNone = 0;
@@ -31290,16 +31422,20 @@ var icons = ICON_TREES;
 var $ = (id) => document.getElementById(id);
 var stage = $("stage");
 var media = matchMedia("(prefers-reduced-motion: reduce)");
+var loading2 = createLoadingView($("loading"));
 var scene = new Scene();
 var camera = new OrthographicCamera(-6, 6, 6, -6, 0.1, 100);
 camera.position.set(0, 0, 20);
 var inverse = new Matrix4();
+var viewportSize = new Vector2();
 var reliefLayers = { subject: [], effects: [], text: [] };
+var loadedTextures = /* @__PURE__ */ new Set();
 var renderer;
 var root;
 var uniforms;
 var config;
 var shadow;
+var renderLoop;
 var lastTime = 0;
 var elapsed = 0;
 var auto = false;
@@ -31309,7 +31445,6 @@ var finish = "pearl";
 var zoom = 1;
 var targetX = -0.035;
 var targetY = -0.15;
-var lastPointer = { x: 0, y: 0 };
 var noticeTimer;
 var settings = [
   ["foil", "uFoil"],
@@ -31375,10 +31510,25 @@ function notice(message) {
 }
 async function init() {
   refreshIcons();
-  const response = await fetch("./card-config.json");
-  if (!response.ok) throw Error("\u4F5C\u54C1\u914D\u7F6E\u672A\u627E\u5230");
-  config = await response.json();
-  document.title = config.title + " \xB7 \u767D\u76F8";
+  const settingsHome = $("parameter-panel").parentElement;
+  const responsiveSettings = () => {
+    const panel = $("parameter-panel");
+    if (matchMedia("(max-width:960px)").matches) document.querySelector("main").append(panel);
+    else settingsHome.append(panel);
+  };
+  responsiveSettings();
+  window.addEventListener("resize", responsiveSettings);
+  loading2.update("\u6B63\u5728\u8BFB\u53D6\u4F5C\u54C1\u4FE1\u606F");
+  const response = await fetch("./card-config.json", { cache: "no-cache" });
+  if (!response.ok) throw Error(`\u4F5C\u54C1\u914D\u7F6E\u672A\u627E\u5230\uFF08HTTP ${response.status}\uFF09`);
+  try {
+    config = await response.json();
+  } catch {
+    throw Error("\u4F5C\u54C1\u914D\u7F6E\u683C\u5F0F\u6709\u8BEF\uFF0C\u8BF7\u68C0\u67E5 card-config.json");
+  }
+  if (loading2.terminal) return;
+  if (!config || typeof config.title !== "string" || !config.assets) throw Error("\u4F5C\u54C1\u914D\u7F6E\u7F3A\u5C11\u6807\u9898\u6216\u7D20\u6750\u6E05\u5355");
+  document.title = config.title + " \xB7 " + (config.ui?.brandName || "\u5149\u5C7F");
   for (const [id, key] of [
     ["card-title", "title"],
     ["subtitle", "subtitle"],
@@ -31390,7 +31540,9 @@ async function init() {
     $(id).textContent = config[key] || "";
   $("about-title").textContent = [config.subtitle, config.title].filter(Boolean).join(" / ");
   applyBrand(config, document);
+  loading2.update("\u6B63\u5728\u51C6\u5907\u5B57\u4F53\u4E0E\u753B\u9762");
   await document.fonts.load("500 42px Atelier");
+  if (loading2.terminal) return;
   try {
     renderer = new WebGLRenderer({
       antialias: true,
@@ -31408,27 +31560,55 @@ async function init() {
         failIfMajorPerformanceCaveat: false
       });
     } catch (retryError) {
-      fallback3D(retryError);
+      await fallback3D(retryError);
       return;
     }
   }
   renderer.setClearColor(config.appearance?.background || "#fafafa", 1);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(viewerPixelRatio(devicePixelRatio, matchMedia("(pointer:coarse)").matches, stage.clientWidth));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = NoToneMapping;
   stage.append(renderer.domElement);
   renderer.domElement.setAttribute("aria-hidden", "true");
   const textureLoader = new TextureLoader();
-  const textures = await Promise.all(
-    ["subject", "background", "text"].map(
-      (name) => textureLoader.loadAsync(config.assets[name])
-    )
-  );
-  const backArt = config.assets.back ? await textureLoader.loadAsync(config.assets.back) : null;
-  const line = config.assets.lineart ? await textureLoader.loadAsync(config.assets.lineart) : new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  const names = ["subject", "background", "text", "back", "lineart", "effects"].filter((name) => config.assets[name]);
+  const labels = { subject: "\u4E3B\u4F53\u56FE\u7247", background: "\u80CC\u666F\u56FE\u7247", text: "\u6587\u5B57\u56FE\u7247", back: "\u80CC\u9762\u56FE\u7247", lineart: "\u7EBF\u7A3F\u56FE\u7247", effects: "\u7279\u6548\u56FE\u7247", model: "\u5361\u7247\u6A21\u578B" };
+  for (const name of ["subject", "background", "text", "model"]) {
+    if (!config.assets[name]) throw Error(`\u4F5C\u54C1\u914D\u7F6E\u7F3A\u5C11${labels[name]}`);
+  }
+  const total = names.length + 1;
+  let completed = 0;
+  loading2.update(`\u6B63\u5728\u8F7D\u5165\u7D20\u6750 \xB7 0 / ${total}`, 0, total);
+  const tracked = async (name, task) => {
+    try {
+      const resource = await task();
+      if (resource.isTexture) {
+        if (loading2.terminal) resource.dispose();
+        else loadedTextures.add(resource);
+      }
+      completed++;
+      loading2.update(`\u6B63\u5728\u8F7D\u5165\u7D20\u6750 \xB7 ${completed} / ${total}`, completed, total);
+      return resource;
+    } catch {
+      throw Error(`${labels[name]}\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u6216\u7F51\u7EDC\u8FDE\u63A5`);
+    }
+  };
+  const resources = await Promise.all([
+    ...names.map((name) => tracked(name, () => textureLoader.loadAsync(config.assets[name]))),
+    tracked("model", () => new GLTFLoader().loadAsync(config.assets.model))
+  ]);
+  if (loading2.terminal) {
+    for (const texture of loadedTextures) texture.dispose();
+    return;
+  }
+  const gltf = resources.pop();
+  const artwork = Object.fromEntries(names.map((name, index) => [name, resources[index]]));
+  const textures = [artwork.subject, artwork.background, artwork.text];
+  const backArt = artwork.back;
+  const line = artwork.lineart ? artwork.lineart : new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   line.needsUpdate = true;
   const hasFx = !!config.assets.effects;
-  const effects = hasFx ? await textureLoader.loadAsync(config.assets.effects) : new DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+  const effects = hasFx ? artwork.effects : new DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
   effects.colorSpace = NoColorSpace;
   if (!hasFx) effects.needsUpdate = true;
   [...textures, line, effects].forEach((t) => {
@@ -31487,7 +31667,7 @@ async function init() {
     materials[role].transparent = true;
     materials[role].depthWrite = role !== "web_effects";
   }
-  const gltf = await new GLTFLoader().loadAsync(config.assets.model);
+  loading2.update("\u6B63\u5728\u5448\u73B0\u5168\u606F\u6548\u679C", total, total);
   root = new Group();
   root.add(gltf.scene);
   scene.add(root);
@@ -31514,14 +31694,6 @@ async function init() {
   }
   if (config.sourceMode === "relief" && !reliefLayers.subject.length) throw Error("\u7F3A\u5C11\u72EC\u7ACB\u4EBA\u7269\u5C42\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6A21\u578B");
   addShadow();
-  const settingsHome = $("parameter-panel").parentElement;
-  const responsiveSettings = () => {
-    const panel = $("parameter-panel");
-    if (matchMedia("(max-width:960px)").matches) document.querySelector("main").append(panel);
-    else settingsHome.append(panel);
-  };
-  responsiveSettings();
-  window.addEventListener("resize", responsiveSettings);
   setupControls();
   document.querySelectorAll("button[disabled],input[disabled]").forEach((el) => el.disabled = false);
   new ResizeObserver(resize).observe(stage);
@@ -31534,10 +31706,10 @@ async function init() {
   if (shaderErrors.length) {
     renderer.dispose();
     renderer.domElement.remove();
-    fallback3D(new Error("\u5F53\u524D\u8BBE\u5907\u65E0\u6CD5\u663E\u793A\u5361\u9762\u6750\u8D28"));
+    await fallback3D(new Error("\u5F53\u524D\u8BBE\u5907\u65E0\u6CD5\u663E\u793A\u5361\u9762\u6750\u8D28"));
     return;
   }
-  $("loading").remove();
+  if (!loading2.finish()) return;
   root.rotation.set(targetX, targetY, 0);
   window.__holo = {
     ready: true,
@@ -31550,13 +31722,15 @@ async function init() {
     flip,
     modelSource: config.assets.model,
     layers: reliefLayers,
-    getState: () => ({ auto, flipped, finish, zoom })
+    getState: () => ({ auto, flipped, finish, zoom, dragging })
   };
   setFinish(config.appearance?.finish || "pearl");
   setAuto(!media.matches);
-  renderer.setAnimationLoop(animate);
+  renderLoop = createRenderLoop({ render: animate, continuous: () => !media.matches || auto, visible: () => !document.hidden && !!window.__holo?.ready });
+  document.addEventListener("visibilitychange", () => document.hidden ? renderLoop.pause() : renderLoop.wake());
+  renderLoop.wake();
 }
-function fallback3D(error) {
+async function fallback3D(error) {
   console.warn("[holo-card] WebGL unavailable, using CSS-3D fallback:", error);
   const roleZ = { background: -48, effects: -25, subject: -8, lineart: 24, text: 28 };
   const wrap = document.createElement("div");
@@ -31599,10 +31773,27 @@ function fallback3D(error) {
   flipper.append(card);
   wrap.append(flipper);
   stage.append(wrap);
-  $("loading").remove();
+  const images = [...front.querySelectorAll("img")];
+  if (config.assets.back) {
+    const image = new Image();
+    image.src = config.assets.back;
+    images.push(image);
+  }
+  await Promise.all(images.map(async (image) => {
+    try {
+      await image.decode();
+    } catch {
+      throw Error(`${image.src.split("/").pop()}\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u6216\u7F51\u7EDC\u8FDE\u63A5`);
+    }
+  }));
+  if (!loading2.finish()) {
+    wrap.remove();
+    return;
+  }
   let tx = -0.03, ty = -0.06, curX = 0, curY = 0, curFlip = 0, flipTarget = 0;
   let lastMove = 0, sway = !media.matches;
   let scale = 1, depthScale = 1, bgScale = 1;
+  let fallbackLoop;
   const applyLayers = () => {
     for (const [name, { el, z }] of layers) {
       const s = name === "background" ? bgScale : 1;
@@ -31610,17 +31801,28 @@ function fallback3D(error) {
     }
   };
   applyLayers();
-  stage.addEventListener("pointermove", (e) => {
-    const r = stage.getBoundingClientRect();
-    tx = Math.max(-0.5, Math.min(0.5, ((e.clientY - r.top) / r.height - 0.5) * 0.9));
-    ty = Math.max(-0.5, Math.min(0.5, ((e.clientX - r.left) / r.width - 0.5) * 1.1));
-    lastMove = performance.now();
-    const c = card.getBoundingClientRect();
-    front.style.setProperty("--mx", Math.round((e.clientX - c.left) / c.width * 100) + "%");
-    front.style.setProperty("--my", Math.round((e.clientY - c.top) / c.height * 100) + "%");
-  });
-  stage.addEventListener("pointerleave", () => {
-    lastMove = 0;
+  bindCardGestures(stage, {
+    start() {
+      sway = false;
+      dragging = true;
+      stage.classList.add("dragging");
+    },
+    rotate(dx, dy) {
+      tx = MathUtils.clamp(tx + dy * 4e-3, -0.5, 0.5);
+      ty = MathUtils.clamp(ty + dx * 6e-3, -0.5, 0.5);
+      lastMove = performance.now();
+      front.style.setProperty("--mx", `${50 + ty * 70}%`);
+      front.style.setProperty("--my", `${50 + tx * 70}%`);
+      fallbackLoop.wake(true);
+    },
+    zoom(factor) {
+      zoom = MathUtils.clamp(zoom * factor, 0.82, 1.35);
+      fallbackLoop.wake(true);
+    },
+    end() {
+      dragging = false;
+      stage.classList.remove("dragging");
+    }
   });
   const frame = (now) => {
     if (sway && now - lastMove > 1500) {
@@ -31628,21 +31830,29 @@ function fallback3D(error) {
       tx = Math.sin(t * 0.7) * 0.07 + 0.05;
       ty = Math.sin(t * 0.55) * 0.11 - 0.18;
     }
-    curX += (tx - curX) * 0.08;
-    curY += (ty - curY) * 0.08;
-    curFlip += (flipTarget - curFlip) * 0.12;
-    flipper.style.transform = `rotateX(${curX.toFixed(4)}rad) rotateY(${curY.toFixed(4)}rad) scale(${scale})`;
+    const ease = media.matches ? 1 : 0.18;
+    curX += (tx - curX) * ease;
+    curY += (ty - curY) * ease;
+    curFlip += (flipTarget - curFlip) * ease;
+    flipper.style.transform = `rotateX(${curX.toFixed(4)}rad) rotateY(${curY.toFixed(4)}rad) scale(${scale * zoom})`;
     card.style.transform = `rotateY(${curFlip.toFixed(4)}rad)`;
-    requestAnimationFrame(frame);
   };
-  requestAnimationFrame(frame);
+  fallbackLoop = createRenderLoop({ render: frame, continuous: () => sway, visible: () => !document.hidden });
+  document.addEventListener("visibilitychange", () => document.hidden ? fallbackLoop.pause() : fallbackLoop.wake());
+  media.addEventListener("change", () => {
+    if (media.matches) sway = false;
+    fallbackLoop.wake();
+  });
+  fallbackLoop.wake();
   const setFlip = (value) => {
     flipped = value;
     flipTarget = flipped ? Math.PI : 0;
     faceLabels();
+    fallbackLoop.wake(true);
   };
   const setAutoUI = (value) => {
     sway = value;
+    fallbackLoop.wake();
     const b = $("auto");
     if (!b) return;
     b.setAttribute("aria-pressed", String(value));
@@ -31662,18 +31872,23 @@ function fallback3D(error) {
   };
   $("info").disabled = false;
   $("info").onclick = () => $("about").showModal();
+  $("close-about").onclick = () => $("about").close();
   $("front").disabled = false;
   $("front").onclick = () => setFlip(false);
   $("back").disabled = false;
   $("back").onclick = () => setFlip(true);
   const depthToggleFallback = $("depth-toggle");
-  if (depthToggleFallback) depthToggleFallback.onclick = () => toggleSettings();
+  if (depthToggleFallback) {
+    depthToggleFallback.disabled = false;
+    depthToggleFallback.onclick = () => toggleSettings();
+  }
   const bindRange = (id, output, fn, decimals = 2) => {
     $(id).disabled = false;
     $(id).addEventListener("input", () => {
       const v = Number($(id).value);
       $(output).textContent = v.toFixed(decimals);
       fn(v);
+      fallbackLoop.wake(true);
     });
   };
   bindRange("scale", "scale-value", (v) => {
@@ -31689,7 +31904,10 @@ function fallback3D(error) {
   });
   document.querySelectorAll("[data-finish]").forEach((b) => {
     b.disabled = false;
-    b.onclick = () => fallbackFinish(b.dataset.finish);
+    b.onclick = () => {
+      fallbackFinish(b.dataset.finish);
+      fallbackLoop.wake();
+    };
   });
   bindRange("foil", "foil-value", (v) => {
     front.style.setProperty("--foil-amount", v);
@@ -31703,22 +31921,33 @@ function fallback3D(error) {
   applyLayers();
   fallbackFinish(config.appearance?.finish || "gold");
   notice("\u6D4F\u89C8\u5668\u672A\u5F00\u542F WebGL\uFF1A\u5DF2\u7528\u8F7B\u91CF 3D \u6A21\u5F0F\u663E\u793A\uFF08\u5C42\u6B21\u4FDD\u7559\uFF09");
-  window.__holo = { ready: false, error: String(error), fallback3d: true };
+  window.__holo = {
+    ready: false,
+    error: String(error),
+    fallback3d: true,
+    getState: () => ({ flipped, zoom, dragging })
+  };
 }
 function resize() {
   if (!renderer) return;
   const width = stage.clientWidth, height = stage.clientHeight;
   const aspect2 = width / height;
+  if (!width || !height) return;
   const halfHeight = Math.max(config.sourceMode === "relief" ? 6.25 : 5.45, 4.5 / aspect2) / zoom;
   camera.left = -halfHeight * aspect2;
   camera.right = halfHeight * aspect2;
   camera.top = halfHeight;
   camera.bottom = -halfHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
+  const pixelRatio = viewerPixelRatio(devicePixelRatio, matchMedia("(pointer:coarse)").matches, width);
+  if (renderer.getPixelRatio() !== pixelRatio) renderer.setPixelRatio(pixelRatio);
+  renderer.getSize(viewportSize);
+  if (viewportSize.x !== width || viewportSize.y !== height) renderer.setSize(width, height);
+  renderLoop?.wake();
 }
 function setAuto(value) {
   auto = value;
+  renderLoop?.wake();
   const button = $("auto");
   if (!button) return;
   button.setAttribute("aria-pressed", String(auto));
@@ -31743,6 +31972,7 @@ function setFinish(value) {
     original: "\u539F\u753B"
   }[value];
   $("foil").disabled = value === "original";
+  renderLoop?.wake();
 }
 function faceLabels() {
   $("front").setAttribute("aria-pressed", String(!flipped));
@@ -31768,6 +31998,7 @@ function updateInput(id, name) {
   uniforms[name].value = Number(input.value);
   if (config.sourceMode === "relief") layoutRelief();
   $(id + "-value").value = id === "foil" ? Math.round(input.value * 100) + "%" : Number(input.value).toFixed(2);
+  renderLoop?.wake(true);
 }
 function reset() {
   targetX = -0.035;
@@ -31809,43 +32040,36 @@ function setupControls() {
     updateInput(id, name);
     $(id).addEventListener("input", () => updateInput(id, name));
   });
-  stage.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    dragging = true;
-    setAuto(false);
-    lastPointer = { x: e.clientX, y: e.clientY };
-    stage.setPointerCapture(e.pointerId);
-    stage.classList.add("dragging");
-    stage.focus({ preventScroll: true });
+  bindCardGestures(stage, {
+    start() {
+      dragging = true;
+      setAuto(false);
+      stage.classList.add("dragging");
+      renderLoop?.wake(true);
+    },
+    rotate(dx, dy) {
+      const base = flipped ? Math.PI : 0;
+      targetY = MathUtils.clamp(targetY + dx * 6e-3, base - 0.65, base + 0.65);
+      targetX = MathUtils.clamp(targetX + dy * 4e-3, -0.36, 0.36);
+      renderLoop?.wake(true);
+    },
+    zoom(factor) {
+      zoom = MathUtils.clamp(zoom * factor, 0.82, 1.35);
+      resize();
+      renderLoop?.wake(true);
+    },
+    end() {
+      dragging = false;
+      stage.classList.remove("dragging");
+    }
   });
-  stage.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const base = flipped ? Math.PI : 0;
-    targetY = MathUtils.clamp(
-      targetY + (e.clientX - lastPointer.x) * 6e-3,
-      base - 0.65,
-      base + 0.65
-    );
-    targetX = MathUtils.clamp(
-      targetX + (e.clientY - lastPointer.y) * 4e-3,
-      -0.36,
-      0.36
-    );
-    lastPointer = { x: e.clientX, y: e.clientY };
-  });
-  const release = () => {
-    dragging = false;
-    stage.classList.remove("dragging");
-  };
-  ["pointerup", "pointercancel", "lostpointercapture"].forEach(
-    (type) => stage.addEventListener(type, release)
-  );
   stage.addEventListener(
     "wheel",
     (e) => {
       e.preventDefault();
-      zoom = MathUtils.clamp(zoom - e.deltaY * 1e-3, 0.82, 1.05);
+      zoom = MathUtils.clamp(zoom - e.deltaY * 1e-3, 0.82, 1.35);
       resize();
+      renderLoop?.wake(true);
     },
     { passive: false }
   );
@@ -31883,6 +32107,7 @@ function setupControls() {
     if (e.key === "ArrowDown") targetX += 0.06;
     targetY = MathUtils.clamp(targetY, base - 0.65, base + 0.65);
     targetX = MathUtils.clamp(targetX, -0.36, 0.36);
+    renderLoop?.wake(true);
   });
   $("front").onclick = () => flip(false);
   $("back").onclick = () => flip(true);
@@ -31901,11 +32126,12 @@ function setupControls() {
   $("save").onclick = saveCard;
   media.addEventListener("change", () => {
     if (media.matches) setAuto(false);
+    renderLoop?.wake();
   });
   renderer.domElement.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
-    renderer.setAnimationLoop(null);
-    notice("\u56FE\u5F62\u663E\u793A\u5DF2\u6682\u505C\uFF0C\u8BF7\u5237\u65B0\u9875\u9762\u6062\u590D");
+    renderLoop?.pause();
+    showRuntimeError("\u56FE\u5F62\u663E\u793A\u5DF2\u6682\u505C\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u6062\u590D");
   });
 }
 function saveCard() {
@@ -31964,36 +32190,28 @@ function animate(now) {
   shadow.scale.x = 1 - Math.abs(Math.sin(root.rotation.y)) * 0.14;
   renderer.render(scene, camera);
 }
-var fail = (message) => {
-  const loading2 = $("loading");
-  if (loading2 && window.__holo && window.__holo.ready) return;
-  loading2?.classList.add("error");
-  loading2?.setAttribute("role", "alert");
-  loading2?.replaceChildren();
-  const msg = document.createElement("span");
-  msg.textContent = message;
-  const retry = document.createElement("button");
-  retry.textContent = "\u91CD\u65B0\u52A0\u8F7D";
-  retry.onclick = () => location.reload();
-  loading2?.append(msg, retry);
+function showRuntimeError(message) {
+  createLoadingView($("loading")).fail(message);
   window.__holo = { ready: false, error: message };
-};
-var LOAD_TIMEOUT_MS = 12e3;
-var settled = false;
-Promise.race([
-  init().then(() => {
-    settled = true;
-  }),
-  new Promise(
-    (_, reject) => setTimeout(
-      () => reject(new Error("\u5361\u7247\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u5237\u65B0\u91CD\u8BD5")),
-      LOAD_TIMEOUT_MS
-    )
-  )
-]).catch((error) => {
-  if (settled) return;
-  console.error(error);
-  fail("\u4F5C\u54C1\u6682\u65F6\u65E0\u6CD5\u52A0\u8F7D\u3002\n" + error.message);
+  document.querySelectorAll("button, input").forEach((element) => {
+    if (!$("loading").contains(element) && element.id !== "close-about") element.disabled = true;
+  });
+}
+function fail(message) {
+  if (!loading2.fail(message)) return;
+  renderLoop?.pause();
+  renderer?.dispose();
+  renderer?.domElement.remove();
+  renderer = null;
+  for (const texture of loadedTextures) texture.dispose();
+  loadedTextures.clear();
+  showRuntimeError(message);
+}
+var loadTimeout = setTimeout(() => fail("\u52A0\u8F7D\u65F6\u95F4\u8F83\u957F\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u65B0\u52A0\u8F7D"), 3e4);
+init().then(() => clearTimeout(loadTimeout)).catch((error) => {
+  clearTimeout(loadTimeout);
+  console.warn("[holo-card]", error);
+  fail(error.message);
 });
 /*! Bundled license information:
 

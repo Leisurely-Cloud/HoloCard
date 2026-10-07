@@ -95,3 +95,29 @@ dialog dl > div { gap:15px; font-size:11px; line-height:1.7; }
   .footer { height:54px; margin:0 24px; font-size:9px; }
   .footer span:last-child { display:none; }
 }
+
+.hint-touch { display:none; }
+.loading { z-index:3; gap:16px; background:#fafafaed; backdrop-filter:blur(8px); }
+.loading-kicker { font-size:9px; letter-spacing:.25em; color:#648aa5; }
+.loading-message { max-width:280px; line-height:1.8; font-size:13px; color:#335b76; }
+.loading progress { appearance:none; width:160px; height:4px; border:0; border-radius:4px; overflow:hidden; }
+.loading progress::-webkit-progress-bar { background:#dce8ef; }
+.loading progress::-webkit-progress-value { background:#639dbf; }
+.loading progress::-moz-progress-bar { background:#639dbf; }
+.loading.error button { min-height:44px; padding:10px 24px; border:1px solid #b6cfdf; border-radius:12px; background:#fff; color:#325c77; }
+@media (pointer:coarse) {
+  .hint-desktop { display:none; }
+  .hint-touch { display:inline; }
+  .header-actions .icon-button, .face-picker button, .depth-toggle, .modal-close { min-width:44px; min-height:44px; }
+  .swatches { gap:12px; }
+  .swatch { width:44px; height:44px; border:9px solid transparent; background-clip:padding-box; box-shadow:none; }
+  .swatch::before { top:36px; }
+  .swatch[aria-pressed="true"]::after { inset:-4px; }
+  input[type="range"], .parameter-panel input[type="range"] { height:28px; background:linear-gradient(#a4c1d4,#a4c1d4) center / 100% 3px no-repeat; }
+  input[type="range"]::-webkit-slider-thumb { width:22px; height:22px; }
+  input[type="range"]::-moz-range-thumb { width:18px; height:18px; }
+}
+@media (max-width:760px) {
+  .stage-note { display:flex; padding:0 24px; font-size:9px; }
+  .stage-note > span:first-child { display:block; letter-spacing:.04em; }
+}

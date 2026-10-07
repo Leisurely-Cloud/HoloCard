@@ -14,7 +14,7 @@ Maintained by [Leisurely-Cloud](https://github.com/Leisurely-Cloud), based on [H
 | Relief mode | Uses separate geometry for the subject, effects and typography, supporting artwork that extends beyond the card |
 | Holographic materials | Pearl, silver, gold and original-art finishes with adjustable gloss |
 | Themed backs | Dedicated back artwork with browser-rendered titles, edition numbers and collection labels |
-| Interactive controls | Rotation, zoom, flip, depth adjustments and PNG capture |
+| Interactive controls | Mouse and touch rotation, pinch zoom, flip, depth adjustments and PNG capture |
 | Viewer configuration | Brand names, selected color tokens and responsive layouts |
 | Editable outputs | Layer PNGs, card configuration, Blender scene and viewer resources |
 | Automated verification | Interaction, resource loading, downloads, narrow layouts and reduced-motion checks |
@@ -178,7 +178,7 @@ Run regression checks:
 ```bash
 python scripts/test_pipeline.py
 python scripts/test_checkerboard.py
-node --test scripts/test_viewer.mjs
+node --test scripts/test_viewer.mjs scripts/test_experience.mjs
 ```
 
 Rebuild `app.bundle.js` after changing viewer modules. See [development notes](references/development.md) and [verification guidance](references/verification.md) for module boundaries, build instructions and the complete verification workflow.

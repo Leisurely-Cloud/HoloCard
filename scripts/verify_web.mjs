@@ -19,7 +19,7 @@
  *
  * Usage:
  *   node scripts/verify_web.mjs <project-dir | url> [--out DIR] [--browser PATH]
- *                               [--only desktop|mobile] [--keep-server]
+ *                               [--only desktop|mobile|experience|performance] [--keep-server]
  *
  * Set --browser (or RUIC_BROWSER) to name the Chromium-family executable; otherwise
  * the usual install locations, PATH and Playwright's browser cache are searched.
@@ -109,10 +109,14 @@ for (let i = 0; i < argv.length; i++) {
 }
 const target = positionals[0];
 if (!target) {
-  console.error("usage: node scripts/verify_web.mjs <project-dir | url> [--out DIR] [--browser PATH] [--only desktop|mobile] [--keep-server]");
+  console.error("usage: node scripts/verify_web.mjs <project-dir | url> [--out DIR] [--browser PATH] [--only desktop|mobile|experience|performance] [--keep-server]");
   process.exit(2);
 }
 const only = flag("--only");
+if (only && !["desktop", "mobile", "performance", "experience"].includes(only)) {
+  console.error("--only must be desktop, mobile, performance or experience");
+  process.exit(2);
+}
 const keepServer = argv.includes("--keep-server");
 const isDir = existsSync(target);
 const project = isDir ? path.resolve(target) : null;
@@ -152,13 +156,20 @@ if (!browser) {
 }
 console.log(`browser: ${browser}`);
 
+// Ports blocked by Fetch above the privileged range:
+// https://fetch.spec.whatwg.org/#port-blocking
+const blockedPorts = new Set([1719,1720,1723,2049,3659,4045,4190,5060,5061,
+  6000,6566,6665,6666,6667,6668,6669,6679,6697,10080]);
 const freePort = () =>
   new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.on("error", reject);
     srv.listen(0, "127.0.0.1", () => {
       const { port } = srv.address();
-      srv.close(() => resolve(port));
+      srv.close(() => {
+        if (port < 1024 || blockedPorts.has(port)) freePort().then(resolve, reject);
+        else resolve(port);
+      });
     });
   });
 
@@ -180,11 +191,13 @@ class Cdp {
     this.ws = ws;
     this.seq = 0;
     this.pending = new Map();
+    this.listeners = new Map();
     this.consoleErrors = [];
     this.failedRequests = [];
     this.downloadNames = [];
     ws.addEventListener("message", (ev) => {
       const msg = JSON.parse(ev.data);
+      for (const handler of this.listeners.get(msg.method) || []) handler(msg.params);
       if (msg.id && this.pending.has(msg.id)) {
         const { resolve, reject } = this.pending.get(msg.id);
         this.pending.delete(msg.id);
@@ -198,6 +211,11 @@ class Cdp {
         this.consoleErrors.push("console: " + (msg.params.args || []).map((a) => a.value ?? a.description).join(" "));
       if (msg.method === "Network.loadingFailed" && !msg.params?.canceled) this.failedRequests.push(`${msg.params?.type} ${msg.params?.errorText}`);
     });
+  }
+  on(method, handler) {
+    if (!this.listeners.has(method)) this.listeners.set(method, new Set());
+    this.listeners.get(method).add(handler);
+    return () => this.listeners.get(method).delete(handler);
   }
   send(method, params = {}) {
     const id = ++this.seq;
@@ -557,6 +575,158 @@ async function mobilePass(base, out) {
 }
 
 // ---------------------------------------------------------------- run
+async function experiencePass(base, out) {
+  const checks = [];
+  const check = (name, pass, detail = "") => {
+    checks.push({ name, pass: !!pass, detail });
+    console.log(`${pass ? "PASS" : "FAIL"}  ${name}  ${detail}`);
+  };
+  const { cdp, close } = await launch({ width: 390, height: 844 }, out);
+  try {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+    let paused;
+    const unsubscribe = cdp.on("Fetch.requestPaused", event => { paused = event; });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*subject.png" }] });
+    await cdp.send("Page.navigate", { url: base });
+    for (let i = 0; i < 60 && !paused; i++) await sleep(100);
+    if (!paused) throw Error("Subject request was not intercepted");
+    await sleep(500);
+    const progress = await cdp.eval(`(()=>{const el=document.getElementById('loading'),p=el.querySelector('progress');return {
+      visible:!el.hidden,text:el.textContent,value:p?.value,max:p?.max,busy:document.getElementById('stage').getAttribute('aria-busy')}})()`);
+    check("loading reports completed assets while a texture is pending", progress.visible && progress.value > 0 && progress.value < progress.max && progress.busy === "true", JSON.stringify(progress));
+    await cdp.shot("17-loading-progress", out);
+    await cdp.send("Fetch.failRequest", { requestId: paused.requestId, errorReason: "Failed" });
+    for (let i = 0; i < 60; i++) {
+      if (await cdp.eval("document.getElementById('loading').dataset.status==='error'")) break;
+      await sleep(100);
+    }
+    const error = await cdp.eval(`(()=>{const el=document.getElementById('loading');return {visible:!el.hidden,
+      text:el.textContent,retry:!el.querySelector('button').hidden,canvases:document.querySelectorAll('#stage canvas').length}})()`);
+    check("failed artwork identifies the resource and offers retry", error.visible && error.text.includes("主体图片") && error.retry && error.canvases === 0, JSON.stringify(error));
+    await cdp.shot("18-loading-error", out);
+    await sleep(500);
+    check("late asset completions do not dismiss the error", await cdp.eval("document.getElementById('loading').dataset.status==='error'"));
+    await cdp.send("Fetch.disable"); unsubscribe();
+    await cdp.eval("document.querySelector('#loading button').click()");
+    await waitReady(cdp);
+    const recovered = await cdp.eval("({hidden:document.getElementById('loading').hidden,canvases:document.querySelectorAll('#stage canvas').length,saveDisabled:document.getElementById('save').disabled})");
+    check("retry recovers one viewer and its controls", recovered.hidden && recovered.canvases === 1 && !recovered.saveDisabled, JSON.stringify(recovered));
+
+    await cdp.eval("window.__holo.reset()"); await sleep(600);
+    const center = await cdp.eval("(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    const touch = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([id,x,y]) => ({ id,x,y })) });
+    const rotation = () => cdp.eval("[window.__holo.root.rotation.x,window.__holo.root.rotation.y]");
+    const before = await rotation();
+    const scrollBefore = await cdp.eval("scrollY");
+    await touch("touchStart", [[1,center.x,center.y]]);
+    for (let i=1;i<=6;i++) await touch("touchMove", [[1,center.x+i*8,center.y+i*12]]);
+    await touch("touchEnd", []); await sleep(600);
+    const after = await rotation();
+    check("real touch rotates both axes without scrolling the page", Math.abs(after[0]-before[0])>.02 && Math.abs(after[1]-before[1])>.02 && await cdp.eval("scrollY") === scrollBefore, JSON.stringify({before,after}));
+    const zoomBefore = await cdp.eval("window.__holo.getState().zoom");
+    await touch("touchStart", [[1,center.x-30,center.y],[2,center.x+30,center.y]]);
+    await touch("touchMove", [[1,center.x-45,center.y],[2,center.x+45,center.y]]);
+    await sleep(100);
+    const zoomIn = await cdp.eval("window.__holo.getState().zoom");
+    await touch("touchMove", [[1,center.x-24,center.y],[2,center.x+24,center.y]]);
+    await sleep(100);
+    const zoomOut = await cdp.eval("window.__holo.getState().zoom");
+    await touch("touchEnd", []);
+    check("two-finger pinch zooms in and out within bounds", zoomIn>zoomBefore && zoomOut<zoomIn && zoomOut>=.82 && zoomIn<=1.35, `${zoomBefore} -> ${zoomIn} -> ${zoomOut}`);
+    await touch("touchStart", [[1,center.x,center.y]]);
+    await touch("touchCancel", []);
+    check("cancelled touch releases the drag state", await cdp.eval("!window.__holo.getState().dragging&&!document.getElementById('stage').classList.contains('dragging')"));
+    const layout = await cdp.eval(`(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,
+      targets:[...document.querySelectorAll('.header-actions button,.face-picker button,.swatch,#depth-toggle')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id||el.dataset.finish,w:r.width,h:r.height}}),
+      panelParent:document.getElementById('parameter-panel').parentElement.tagName,
+      dpr:window.__holo.renderer.getPixelRatio()}))()`);
+    check("phone controls have 44px targets and do not overflow", !layout.overflow && layout.targets.every(t=>t.w>=44&&t.h>=44) && layout.panelParent === "MAIN", JSON.stringify(layout));
+    check("phone display bounds pixel ratio independently of export", layout.dpr<=1.5, String(layout.dpr));
+    await cdp.eval("window.__holo.reset()"); await sleep(600);
+    await cdp.shot("19-mobile-touch", out);
+    await cdp.send("Input.synthesizeScrollGesture", { x:8,y:700,yDistance:-250,gestureSourceType:"touch",preventFling:true });
+    await touch("touchStart", [[7,8,740]]);
+    for (let i=1;i<=6;i++) {
+      await touch("touchMove", [[7,8,740-i*40]]);
+      await sleep(30);
+    }
+    await touch("touchEnd", []);
+    await sleep(200);
+    const scroll = await cdp.eval("({y:scrollY,height:document.documentElement.scrollHeight,viewport:innerHeight,element:document.elementFromPoint(8,700)?.className})");
+    check("page remains scrollable outside the card", scroll.y>0, JSON.stringify(scroll));
+
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await cdp.eval("window.__holo.reset()"); await sleep(700);
+    const idleFrames = await cdp.eval("window.__holo.renderer.info.render.frame");
+    await sleep(600);
+    check("reduced-motion static card stops redundant rendering", await cdp.eval("window.__holo.renderer.info.render.frame") === idleFrames);
+    await cdp.eval("document.getElementById('back').click()"); await sleep(150);
+    check("a sleeping renderer wakes for flip", await cdp.eval("window.__holo.getState().flipped && window.__holo.renderer.info.render.frame") > idleFrames);
+    await cdp.eval("document.getElementById('info').click();document.getElementById('close-about').click()");
+    check("mobile artwork information opens and closes", await cdp.eval("!document.getElementById('about').open"));
+    await cdp.eval("window.__holo.renderer.getContext().getExtension('WEBGL_lose_context').loseContext()");
+    await sleep(200);
+    const lost = await cdp.eval("({error:window.__holo.error,visible:!document.getElementById('loading').hidden,saveDisabled:document.getElementById('save').disabled})");
+    check("lost graphics context shows a recoverable error", lost.visible && lost.saveDisabled && lost.error?.includes("重新加载"), JSON.stringify(lost));
+    await cdp.eval("document.querySelector('#loading button').click()");
+    const restored = await waitReady(cdp);
+    check("reload recovers the graphics context", restored.ready && !restored.fallback);
+    return { checks };
+  } finally { close(); }
+}
+
+async function performancePass(base, out) {
+  const { cdp, close } = await launch({ width: 390, height: 844 }, out);
+  try {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+    const start = Date.now();
+    await cdp.send("Page.navigate", { url: base });
+    const ready = await waitReady(cdp);
+    const readyMs = Date.now() - start;
+    await cdp.eval("window.__holo.reset()");
+    await sleep(700);
+    const sample = (duration = 3000) => cdp.eval(`new Promise(resolve=>{
+      const h=window.__holo, start=performance.now(), frames=h.renderer.info.render.frame;
+      setTimeout(()=>resolve({elapsedMs:performance.now()-start,renderedFrames:h.renderer.info.render.frame-frames,
+        pixelRatio:h.renderer.getPixelRatio(),canvasPixels:[h.renderer.domElement.width,h.renderer.domElement.height],
+        readyMs:${readyMs},coarse:matchMedia('(pointer:coarse)').matches}),${duration})})`);
+    const idle = await sample();
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await cdp.eval("window.__holo.reset()");
+    await sleep(700);
+    const reducedMotion = await sample(1200);
+    const metrics = { environment: "390px, DPR 2, headless Chromium with SwiftShader; not a hardware-phone benchmark", idle, reducedMotion };
+    writeFileSync(path.join(out, "performance.json"), JSON.stringify(metrics, null, 2));
+    console.log("Performance measurements: " + JSON.stringify(metrics));
+    return { checks: [{ name: "performance sample uses a ready WebGL viewer", pass: ready.ready && !ready.fallback }], metrics };
+  } finally { close(); }
+}
+
+async function fallbackPass(base, out) {
+  const checks = [];
+  const check = (name, pass) => { checks.push({ name, pass: !!pass }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`); };
+  const { cdp, close } = await launch({ width:390,height:844,extraFlags:['--disable-webgl'] }, out);
+  try {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width:390,height:844,deviceScaleFactor:2,mobile:true });
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled:true });
+    await cdp.send('Page.navigate', { url:base });
+    const ready = await waitReady(cdp);
+    check('unavailable WebGL displays loaded CSS artwork', ready.fallback && await cdp.eval("document.getElementById('loading').hidden && [...document.querySelectorAll('.front3d img')].every(img=>img.complete&&img.naturalWidth>0)"));
+    await cdp.eval("document.getElementById('back').click()"); await sleep(600);
+    check('CSS fallback flips and its information dialog closes', await cdp.eval("(()=>{document.getElementById('info').click();document.getElementById('close-about').click();return window.__holo.getState().flipped&&!document.getElementById('about').open})()"));
+    const point = await cdp.eval("(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{id:1,x:point.x-30,y:point.y},{id:2,x:point.x+30,y:point.y}]});
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchMove',touchPoints:[{id:1,x:point.x-45,y:point.y},{id:2,x:point.x+45,y:point.y}]});
+    await sleep(150);
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+    check('CSS fallback supports real pinch zoom', await cdp.eval('window.__holo.getState().zoom>1'));
+    await cdp.shot('20-mobile-fallback',out);
+    return {checks};
+  } finally { close(); }
+}
+
 let server = null;
 let base = target;
 if (isDir) {
@@ -579,7 +749,7 @@ if (isDir) {
 const report = { target, base, browser, passes: {} };
 let failed = 0;
 try {
-  if (only !== "mobile") {
+  if (!only || only === "desktop") {
     const d = await desktopPass(base, outDir);
     report.passes.desktop = {
       checks: d.checks,
@@ -590,10 +760,23 @@ try {
     };
     failed += d.checks.filter((c) => !c.pass).length;
   }
-  if (only !== "desktop") {
+  if (!only || only === "mobile") {
     const m = await mobilePass(base, outDir);
     report.passes.mobile = { checks: m.checks };
     failed += m.checks.filter((c) => !c.pass).length;
+  }
+  if (only === "performance") {
+    const p = await performancePass(base, outDir);
+    report.passes.performance = p;
+    failed += p.checks.filter(c => !c.pass).length;
+  }
+  if (!only || only === "experience") {
+    const e = await experiencePass(base, outDir);
+    report.passes.experience = e;
+    failed += e.checks.filter(c => !c.pass).length;
+    const fallback = await fallbackPass(base, outDir);
+    report.passes.fallback = fallback;
+    failed += fallback.checks.filter(c => !c.pass).length;
   }
 } finally {
   if (server && !keepServer) server.kill("SIGKILL");

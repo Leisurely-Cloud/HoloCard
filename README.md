@@ -14,7 +14,7 @@
 | 浮雕模式 | 将人物、特效与标题拆分为独立几何层，支持破框构图 |
 | 全息材质 | 提供珠光、银箔、烫金和原画显示模式，可调整光泽 |
 | 主题背面 | 支持独立背面插画，并在网页中排版标题、编号与系列信息 |
-| 交互控制 | 支持旋转、缩放、翻面、景深调整及 PNG 截图下载 |
+| 交互控制 | 支持鼠标与触摸旋转、双指缩放、翻面、景深调整及 PNG 截图下载 |
 | 界面配置 | 支持品牌名称、部分配色参数及移动端布局 |
 | 可编辑输出 | 保留分层 PNG、卡片配置、Blender 场景与网页资源 |
 | 自动验证 | 检查网页交互、资源加载、截图下载、窄屏布局与减弱动态效果设置 |
@@ -177,7 +177,7 @@ assets/web-template/
 ```bash
 python scripts/test_pipeline.py
 python scripts/test_checkerboard.py
-node --test scripts/test_viewer.mjs
+node --test scripts/test_viewer.mjs scripts/test_experience.mjs
 ```
 
 修改网页模块后需重新生成 `app.bundle.js`。模块边界、构建方式与完整验证流程见 [开发说明](references/development.md) 和 [验证说明](references/verification.md)。

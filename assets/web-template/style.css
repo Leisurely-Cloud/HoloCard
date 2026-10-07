@@ -170,7 +170,7 @@ button svg {
   inset: 0 0 30px;
   outline-offset: -10px !important;
   cursor: grab;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .stage.dragging {
   cursor: grabbing;
