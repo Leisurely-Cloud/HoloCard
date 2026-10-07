@@ -638,7 +638,7 @@ async function experiencePass(base, out) {
     await touch("touchCancel", []);
     check("cancelled touch releases the drag state", await cdp.eval("!window.__holo.getState().dragging&&!document.getElementById('stage').classList.contains('dragging')"));
     const layout = await cdp.eval(`(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,
-      targets:[...document.querySelectorAll('.header-actions button,.face-picker button,.swatch,#depth-toggle,#theme-preset,.settings-actions button')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id||el.dataset.finish,w:r.width,h:r.height}}),
+      targets:[...document.querySelectorAll('.header-actions button,.face-picker button,.swatch,#depth-toggle,.settings-actions button')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id||el.dataset.finish,w:r.width,h:r.height}}),
       panelParent:document.getElementById('parameter-panel').parentElement.tagName,
       dpr:window.__holo.renderer.getPixelRatio()}))()`);
     check("phone controls have 44px targets and do not overflow", !layout.overflow && layout.targets.every(t=>t.w>=44&&t.h>=44) && layout.panelParent === "MAIN", JSON.stringify(layout));
@@ -713,15 +713,12 @@ async function settingsChecks(cdp, check, out, fallback = false) {
     paper:getComputedStyle(document.documentElement).getPropertyValue('--paper').trim(),ink:document.documentElement.style.getPropertyValue('--ink'),
     uniform:window.__holo.uniforms?.uFoil.value,flipped:window.__holo.getState().flipped}})()`);
   const initial = await snapshot();
-  const select = async id => { await cdp.eval(`(()=>{const el=document.getElementById('theme-preset');el.value='${id}';el.dispatchEvent(new Event('change',{bubbles:true}))})()`); await sleep(250); };
-  for (const [id,finish,paper] of [['ink','gold','#faf8f2'],['abyss','silver','#f6faff'],['crayon','original','#fffaf1']]) {
-    await select(id); const s = await snapshot();
-    check(`${fallback?'CSS':'WebGL'} ${id} preset changes material and page palette`, s.finish === finish && s.paper === paper && (fallback || s.uniform === s.foil));
-    await cdp.shot(`preset-${id}${fallback?'-fallback':''}`,out);
-  }
-  await select('abyss');
-  await cdp.eval("(()=>{const el=document.getElementById('foil');el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))})()");
-  check('manual changes clear preset selection', await cdp.eval("document.getElementById('theme-preset').value === ''"));
+  check('page uses project-authored palette and typography', await cdp.eval(`(()=>{const c=window.__holo.config || ${JSON.stringify(original)};
+    const style=document.documentElement.style;
+    return Object.entries(c.ui?.palette||{}).every(([k,v])=>style.getPropertyValue('--'+k)===v)
+      && Object.entries(c.ui?.fonts||{}).every(([k,v])=>style.getPropertyValue('--'+k+'-font')===v)})()`));
+  await cdp.shot(`authored-style${fallback?'-fallback':''}`,out);
+  await cdp.eval("document.querySelector('[data-finish=\"silver\"]').click();(()=>{const el=document.getElementById('foil');el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))})()");
   await cdp.send('Browser.setDownloadBehavior', {behavior:'allow',downloadPath:folder,eventsEnabled:true});
   await cdp.eval("document.getElementById('export-settings').click()");
   const exportedPath = path.join(folder,'card-config.json');

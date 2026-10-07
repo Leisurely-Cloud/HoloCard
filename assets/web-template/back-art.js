@@ -3,19 +3,21 @@ export function createBackCanvas(config, image) {
   c.width = 1024;
   c.height = 1536;
   const ctx = c.getContext("2d");
+  const displayFont = config.ui?.fonts?.display || '"Microsoft YaHei", sans-serif';
+  const bodyFont = config.ui?.fonts?.body || 'Arial, sans-serif';
   if (image) {
     ctx.drawImage(image, 0, 0, 1024, 1536);
     ctx.textAlign = "center";
     ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
+    ctx.font = `500 19px ${bodyFont}`;
     ctx.fillText(config.collection || "ART COLLECTION", 512, 122);
     ctx.fillStyle = config.backDesign?.primary || "#d6edff";
-    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
+    ctx.font = `600 42px ${displayFont}`;
     ctx.fillText(config.title, 512, 195);
-    ctx.font = '23px "Microsoft YaHei", sans-serif';
+    ctx.font = `23px ${bodyFont}`;
     ctx.fillText(config.subtitle || "", 512, 1370);
     ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
+    ctx.font = `500 19px ${bodyFont}`;
     ctx.fillText(`${config.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
     return c;
   }

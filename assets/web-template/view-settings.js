@@ -1,17 +1,6 @@
 // Portable presentation settings; artwork, model and project metadata stay intact.
 export const PARAMETER_DEFAULTS = { foil: .52, subjectScale: 1, subjectDepth: .32, effectsDepth: .14, backgroundDepth: -.18 };
 export const PALETTE_KEYS = ['ink', 'muted', 'accent', 'focus', 'control', 'line'];
-export const PRESETS = {
-  ink: { label: '黑金水墨', appearance: { finish: 'gold', background: '#faf8f2' },
-    parameters: { foil: .65, subjectScale: 1.06, subjectDepth: .24, effectsDepth: .12, backgroundDepth: -.16 },
-    ui: { palette: { ink: '#3d3021', muted: '#8d7b60', accent: '#a57b32', focus: '#8b621f', control: '#f0e9dc', line: '#ded1b9' } } },
-  abyss: { label: '蓝银深海', appearance: { finish: 'silver', background: '#f6faff' },
-    parameters: { foil: .38, subjectScale: 1.13, subjectDepth: .28, effectsDepth: .19, backgroundDepth: -.2 },
-    ui: { palette: { ink: '#193b57', muted: '#718496', accent: '#3b8cb8', focus: '#3588b9', control: '#eaf3f9', line: '#dce6ed' } } },
-  crayon: { label: '蜡笔彩色', appearance: { finish: 'original', background: '#fffaf1' },
-    parameters: { foil: .16, subjectScale: 1.04, subjectDepth: .18, effectsDepth: .1, backgroundDepth: -.12 },
-    ui: { palette: { ink: '#493d58', muted: '#887886', accent: '#bb4f70', focus: '#ad3c5e', control: '#faecef', line: '#ebd8de' } } },
-};
 const object = (v, name) => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw Error(`${name} 必须是对象`);
 };
@@ -79,21 +68,11 @@ export function bindSettingsPanel({ document, config, read, apply, resetPose, no
   const $ = id => document.getElementById(id);
   const initial = viewSettings(config);
   let busy = false, revision = 0;
-  const applyState = state => { apply(state); $('theme-preset').value = ''; };
-  for (const [id, preset] of Object.entries(PRESETS)) {
-    const option = document.createElement('option'); option.value = id; option.textContent = preset.label;
-    $('theme-preset').append(option);
-  }
-  $('theme-preset').disabled = false;
-  $('theme-preset').onchange = () => {
-    const preset = PRESETS[$('theme-preset').value];
-    if (!preset) return;
-    revision++; apply(mergeSettings(read(), preset)); notice(`已应用${preset.label}`);
-  };
+  const applyState = state => apply(state);
   $('parameter-panel').addEventListener('input', e => {
-    if (e.target.type === 'range') { revision++; $('theme-preset').value = ''; }
+    if (e.target.type === 'range') revision++;
   });
-  document.querySelectorAll('[data-finish], #foil').forEach(el => el.addEventListener(el.id === 'foil' ? 'input' : 'click', () => { revision++; $('theme-preset').value = ''; }));
+  document.querySelectorAll('[data-finish], #foil').forEach(el => el.addEventListener(el.id === 'foil' ? 'input' : 'click', () => { revision++; }));
   for (const id of ['export-settings', 'import-settings', 'reset-settings']) $(id).disabled = false;
   $('export-settings').onclick = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(exportSettings(config, read()), null, 2) + '\n'], { type: 'application/json' }));

@@ -9,4 +9,9 @@ export function applyBrand(config, document) {
     else document.documentElement.style.removeProperty(`--${key}`);
   }
   document.documentElement.style.setProperty('--paper', config.appearance?.background || '#fafafa');
+  for (const key of ['display', 'body']) {
+    const value = config.ui?.fonts?.[key];
+    if (value) document.documentElement.style.setProperty(`--${key}-font`, value);
+    else document.documentElement.style.removeProperty(`--${key}-font`);
+  }
 }

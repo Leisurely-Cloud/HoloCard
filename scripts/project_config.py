@@ -100,6 +100,9 @@ def validate_config(config):
     if "palette" in ui:
         for key, value in _object(ui["palette"], "ui.palette").items():
             _string(value, f"ui.palette.{key}")
+    if "fonts" in ui:
+        for key, value in _object(ui["fonts"], "ui.fonts").items():
+            _string(value, f"ui.fonts.{key}")
     return config
 
 

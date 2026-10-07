@@ -110,6 +110,14 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('parameters.foil', result.stderr)
         self.assertNotIn('Traceback', result.stderr)
 
+    def test_project_fonts_are_validated_and_art_direction_is_preserved(self):
+        config = {'title': 'Ink card', 'ui': {'fonts': {'display': 'KaiTi, serif', 'body': 'sans-serif'}},
+                  'artDirection': {'medium': 'ink', 'observations': 'fine contours'}}
+        self.assertEqual(validate_config(config), config)
+        for fonts in ([], {'display': 42}, {'body': False}):
+            with self.subTest(fonts=fonts), self.assertRaisesRegex(ValueError, 'ui.fonts'):
+                validate_config({'title': 'Test', 'ui': {'fonts': fonts}})
+
     def test_assembly_preserves_model_and_omits_template_caches(self):
         for name in ['subject','background','lineart','text','back']:
             (self.root / 'assets' / f'{name}.png').write_bytes(name.encode())

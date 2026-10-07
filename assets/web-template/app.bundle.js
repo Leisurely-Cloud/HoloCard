@@ -139,19 +139,21 @@ function createBackCanvas(config2, image) {
   c.width = 1024;
   c.height = 1536;
   const ctx = c.getContext("2d");
+  const displayFont = config2.ui?.fonts?.display || '"Microsoft YaHei", sans-serif';
+  const bodyFont = config2.ui?.fonts?.body || "Arial, sans-serif";
   if (image) {
     ctx.drawImage(image, 0, 0, 1024, 1536);
     ctx.textAlign = "center";
     ctx.fillStyle = config2.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
+    ctx.font = `500 19px ${bodyFont}`;
     ctx.fillText(config2.collection || "ART COLLECTION", 512, 122);
     ctx.fillStyle = config2.backDesign?.primary || "#d6edff";
-    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
+    ctx.font = `600 42px ${displayFont}`;
     ctx.fillText(config2.title, 512, 195);
-    ctx.font = '23px "Microsoft YaHei", sans-serif';
+    ctx.font = `23px ${bodyFont}`;
     ctx.fillText(config2.subtitle || "", 512, 1370);
     ctx.fillStyle = config2.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
+    ctx.font = `500 19px ${bodyFont}`;
     ctx.fillText(`${config2.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
     return c;
   }
@@ -202,6 +204,11 @@ function applyBrand(config2, document2) {
     else document2.documentElement.style.removeProperty(`--${key}`);
   }
   document2.documentElement.style.setProperty("--paper", config2.appearance?.background || "#fafafa");
+  for (const key of ["display", "body"]) {
+    const value = config2.ui?.fonts?.[key];
+    if (value) document2.documentElement.style.setProperty(`--${key}-font`, value);
+    else document2.documentElement.style.removeProperty(`--${key}-font`);
+  }
 }
 
 // gestures.js
@@ -339,26 +346,6 @@ function createLoadingView(element) {
 // view-settings.js
 var PARAMETER_DEFAULTS = { foil: 0.52, subjectScale: 1, subjectDepth: 0.32, effectsDepth: 0.14, backgroundDepth: -0.18 };
 var PALETTE_KEYS = ["ink", "muted", "accent", "focus", "control", "line"];
-var PRESETS = {
-  ink: {
-    label: "\u9ED1\u91D1\u6C34\u58A8",
-    appearance: { finish: "gold", background: "#faf8f2" },
-    parameters: { foil: 0.65, subjectScale: 1.06, subjectDepth: 0.24, effectsDepth: 0.12, backgroundDepth: -0.16 },
-    ui: { palette: { ink: "#3d3021", muted: "#8d7b60", accent: "#a57b32", focus: "#8b621f", control: "#f0e9dc", line: "#ded1b9" } }
-  },
-  abyss: {
-    label: "\u84DD\u94F6\u6DF1\u6D77",
-    appearance: { finish: "silver", background: "#f6faff" },
-    parameters: { foil: 0.38, subjectScale: 1.13, subjectDepth: 0.28, effectsDepth: 0.19, backgroundDepth: -0.2 },
-    ui: { palette: { ink: "#193b57", muted: "#718496", accent: "#3b8cb8", focus: "#3588b9", control: "#eaf3f9", line: "#dce6ed" } }
-  },
-  crayon: {
-    label: "\u8721\u7B14\u5F69\u8272",
-    appearance: { finish: "original", background: "#fffaf1" },
-    parameters: { foil: 0.16, subjectScale: 1.04, subjectDepth: 0.18, effectsDepth: 0.1, backgroundDepth: -0.12 },
-    ui: { palette: { ink: "#493d58", muted: "#887886", accent: "#bb4f70", focus: "#ad3c5e", control: "#faecef", line: "#ebd8de" } }
-  }
-};
 var object = (v, name) => {
   if (!v || typeof v !== "object" || Array.isArray(v)) throw Error(`${name} \u5FC5\u987B\u662F\u5BF9\u8C61`);
 };
@@ -440,33 +427,12 @@ function bindSettingsPanel({ document: document2, config: config2, read, apply, 
   const $2 = (id) => document2.getElementById(id);
   const initial = viewSettings(config2);
   let busy = false, revision = 0;
-  const applyState = (state) => {
-    apply(state);
-    $2("theme-preset").value = "";
-  };
-  for (const [id, preset] of Object.entries(PRESETS)) {
-    const option = document2.createElement("option");
-    option.value = id;
-    option.textContent = preset.label;
-    $2("theme-preset").append(option);
-  }
-  $2("theme-preset").disabled = false;
-  $2("theme-preset").onchange = () => {
-    const preset = PRESETS[$2("theme-preset").value];
-    if (!preset) return;
-    revision++;
-    apply(mergeSettings(read(), preset));
-    notice2(`\u5DF2\u5E94\u7528${preset.label}`);
-  };
+  const applyState = (state) => apply(state);
   $2("parameter-panel").addEventListener("input", (e) => {
-    if (e.target.type === "range") {
-      revision++;
-      $2("theme-preset").value = "";
-    }
+    if (e.target.type === "range") revision++;
   });
   document2.querySelectorAll("[data-finish], #foil").forEach((el) => el.addEventListener(el.id === "foil" ? "input" : "click", () => {
     revision++;
-    $2("theme-preset").value = "";
   }));
   for (const id of ["export-settings", "import-settings", "reset-settings"]) $2(id).disabled = false;
   $2("export-settings").onclick = () => {

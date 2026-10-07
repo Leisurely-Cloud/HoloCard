@@ -15,7 +15,8 @@ Maintained by [Leisurely-Cloud](https://github.com/Leisurely-Cloud), based on [H
 | Holographic materials | Pearl, silver, gold and original-art finishes with adjustable gloss |
 | Themed backs | Dedicated back artwork with browser-rendered titles, edition numbers and collection labels |
 | Interactive controls | Mouse and touch rotation, pinch zoom, flip, depth adjustments and PNG capture |
-| Themes and configuration | Ink/gold, abyss/silver and crayon/color presets; JSON export/import and restoration of the original artwork settings |
+| Image-led art direction | Inspect the medium, contours, palette and mood to design matching typography, frames, backs and materials |
+| Saved settings | JSON export/import and restoration of the original artwork settings |
 | Viewer configuration | Brand names, selected color tokens and responsive layouts |
 | Editable outputs | Layer PNGs, card configuration, Blender scene and viewer resources |
 | Automated verification | Interaction, resource loading, downloads, narrow layouts and reduced-motion checks |
@@ -120,9 +121,11 @@ node scripts/verify_web.mjs ../card-project
 
 The verifier starts its own server and headless browser, then writes reports and screenshots to the project's `verification/` directory. Set `RUIC_BROWSER` or pass `--browser` to select a browser executable. In addition to automated checks, inspect the front, back, tilted views and text readability.
 
-### 4. Themes and saved settings
+### 4. Art direction and saved settings
 
-Open “主题与景深” to select a preset or edit parameters. “导出配置” downloads the current `card-config.json`; “导入配置” validates and applies presentation fields while retaining the current artwork. “恢复默认” restores the settings fetched at page load and faces the card forward.
+Each project receives an authored treatment based on its actual artwork, with no generic theme presets. Image analysis and visual review belong to the agent workflow; the static page reads the configuration and does not recognize an uploaded image’s style. See [style matching](references/style-matching.md).
+
+Open “构图与参数” to edit parameters. “导出配置” downloads the current `card-config.json`; “导入配置” validates and applies presentation fields while retaining the current artwork. “恢复默认” restores the settings fetched at page load and faces the card forward.
 
 Edits last for the current session. Replace `web/card-config.json` with the exported file to keep them after a reload. Before rebuilding, merge the exported `parameters`, `appearance` and `ui.palette` into the root project configuration. See [presentation settings](references/development.md#presentation-settings).
 
