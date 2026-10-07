@@ -133,6 +133,8 @@ The verifier starts its own server and headless browser, then writes reports and
 
 The pipeline resolves viewer asset paths from files present in `assets/`. See [backs and relief](references/backs-and-relief.md) for detailed layer, back and UI configuration.
 
+Configuration is checked before building, with field names or JSON line and column locations in error messages. The title must not be blank; scales and layer dimensions must be positive, depths and offsets must be finite numbers, and foil must be between 0 and 1. Omitted optional fields retain existing defaults, and custom metadata is preserved. Rebuilds remove cancelled back and effects images while keeping the model, custom files and dependency caches.
+
 ## Output files
 
 | Path | Contents |
@@ -175,10 +177,13 @@ Run regression checks:
 
 ```bash
 python scripts/test_pipeline.py
+python scripts/test_checkerboard.py
 node --test scripts/test_viewer.mjs
 ```
 
 Rebuild `app.bundle.js` after changing viewer modules. See [development notes](references/development.md) and [verification guidance](references/verification.md) for module boundaries, build instructions and the complete verification workflow.
+
+[GitHub Actions](.github/workflows/checks.yml) runs regression tests, viewer bundling and skill-package audits on pushes and pull requests across Linux, Windows and macOS. Material, geometry or interaction changes still require a Blender build and real-browser verification.
 
 Package the distributable skill:
 

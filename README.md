@@ -132,6 +132,8 @@ node scripts/verify_web.mjs ../card-project
 
 流水线根据 `assets/` 下实际存在的图片生成网页资源路径。浮雕层、主题背面和界面配置的详细说明见 [背面与浮雕配置](references/backs-and-relief.md)。
 
+配置会在构建前校验，并在出错时指出字段或 JSON 的行列位置。标题不能为空；缩放与层尺寸必须为正数，景深与偏移必须为有限数值，光泽范围为 0–1。省略的可选字段继续使用现有默认值，自定义元数据会保留。重新构建时，会清理已取消的背面和特效素材，并保留模型、自定义文件与依赖缓存。
+
 ## 输出文件
 
 | 路径 | 内容 |
@@ -174,10 +176,13 @@ assets/web-template/
 
 ```bash
 python scripts/test_pipeline.py
+python scripts/test_checkerboard.py
 node --test scripts/test_viewer.mjs
 ```
 
 修改网页模块后需重新生成 `app.bundle.js`。模块边界、构建方式与完整验证流程见 [开发说明](references/development.md) 和 [验证说明](references/verification.md)。
+
+[GitHub Actions](.github/workflows/checks.yml) 在提交和拉取请求时自动执行回归测试、网页打包及技能包审计，覆盖 Linux、Windows 和 macOS。涉及材质、几何或交互的改动仍需完成 Blender 构建与实际浏览器验证。
 
 打包可分发的技能文件：
 

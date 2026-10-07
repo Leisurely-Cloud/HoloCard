@@ -48,7 +48,10 @@ def main():
     parser.add_argument("--skip-render", action="store_true")
     parser.add_argument("--skip-npm", action="store_true")
     args = parser.parse_args()
-    root = run_pipeline(args.project, args.blender, args.skip_render, args.skip_npm)
+    try:
+        root = run_pipeline(args.project, args.blender, args.skip_render, args.skip_npm)
+    except (ValueError, FileNotFoundError) as error:
+        parser.error(str(error))
     print("Completed:", root / "card.blend")
     print("Preview: node", root / "web" / "server.mjs")
     print("Open http://127.0.0.1:4173 after starting the server")

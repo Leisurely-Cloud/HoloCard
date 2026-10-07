@@ -4,17 +4,28 @@ import json
 import shutil
 import subprocess
 import sys
-from project_config import layer_names, web_config
+from project_config import OPTIONAL_LAYERS, layer_names, web_config
 
 
 def assemble_viewer(root, template):
     root = Path(root)
+    config = web_config(root)
+    names = layer_names(root)
     web = root / "web"
     shutil.copytree(template, web, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("node_modules", ".git", "__pycache__"))
-    (web / "card-config.json").write_text(json.dumps(web_config(root), ensure_ascii=False, indent=2), encoding="utf8")
-    for name in layer_names(root):
-        shutil.copy2(root / "assets" / f"{name}.png", web / "assets" / f"{name}.png")
+    assets = web / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    if not assets.resolve().is_relative_to(web.resolve()):
+        raise ValueError("web/assets must stay inside the viewer directory")
+    # Only remove managed optional layers that the source no longer supplies.
+    # Preserve the exported model, custom files and installed dependencies.
+    for name in OPTIONAL_LAYERS:
+        if name not in names:
+            (assets / f"{name}.png").unlink(missing_ok=True)
+    for name in names:
+        shutil.copy2(root / "assets" / f"{name}.png", assets / f"{name}.png")
+    (web / "card-config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf8")
     return web
 
 
