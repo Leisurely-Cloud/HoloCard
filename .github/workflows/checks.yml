@@ -47,7 +47,7 @@ jobs:
       - name: Transparency regression tests
         run: python scripts/test_checkerboard.py
       - name: Viewer regression tests
-        run: node --test scripts/test_viewer.mjs scripts/test_experience.mjs
+        run: node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
       - name: Install viewer dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund --prefix assets/web-template
       - name: Bundle viewer

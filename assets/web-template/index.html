@@ -64,6 +64,9 @@
           <div class="panel-heading">
             <span>景深与构图</span>
           </div>
+          <label class="preset-label" for="theme-preset">主题预设</label>
+          <select id="theme-preset" disabled><option value="">作品默认 / 自定义</option></select>
+          <p class="preset-note">调整材质与配色，保留当前作品素材</p>
           <label class="range-row" for="scale"
             ><span>画面比例</span><output id="scale-value"></output
             ><input id="scale" type="range" min="0.95" max="1.35" step="0.01"
@@ -80,6 +83,12 @@
             ><span>底纹景深</span><output id="bg-depth-value"></output
             ><input id="bg-depth" type="range" min="-0.4" max="0.4" step="0.01"
           /></label>
+          <div class="settings-actions" role="group" aria-label="配置管理">
+            <button id="export-settings" type="button" disabled>导出配置</button>
+            <button id="import-settings" type="button" disabled>导入配置</button>
+            <button id="reset-settings" type="button" disabled>恢复默认</button>
+          </div>
+          <input id="settings-file" type="file" accept=".json,application/json" hidden />
         </div>
       </section>
       <section class="artwork-bar" aria-label="作品与材质">
@@ -102,10 +111,10 @@
             type="button"
             aria-controls="parameter-panel"
             aria-expanded="true"
-            aria-label="显示或隐藏景深调整"
+            aria-label="显示或隐藏主题与景深调整"
             title="显示或隐藏景深调整"
           >
-            <i data-lucide="sliders-horizontal"></i><span>景深调整</span>
+            <i data-lucide="sliders-horizontal"></i><span>主题与景深</span>
           </button>
           <div class="finish-control">
           <div class="finish-heading">

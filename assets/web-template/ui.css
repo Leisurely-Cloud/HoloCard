@@ -1,4 +1,4 @@
-/* Blue and silver furniture for the Abyssal Echo edition. */
+/* Collection furniture; semantic colors can be changed by presentation presets. */
 :root { --paper:#fafafa; --ink:#193047; --muted:#718496; --line:#dce6ed; --accent:#3b8cb8; --focus:#3588b9; --control:#edf3f7; }
 .masthead { height:96px; }
 .wordmark { gap:13px; }
@@ -121,3 +121,37 @@ dialog dl > div { gap:15px; font-size:11px; line-height:1.7; }
   .stage-note { display:flex; padding:0 24px; font-size:9px; }
   .stage-note > span:first-child { display:block; letter-spacing:.04em; }
 }
+
+.preset-label { display:block; font-size:11px; margin-bottom:8px; color:inherit; }
+#theme-preset { width:100%; min-height:44px; padding:0 12px; border:1px solid #ffffff30; border-radius:9px; background:#ffffff14; color:inherit; font:inherit; font-size:12px; }
+#theme-preset option { background:var(--paper); color:var(--ink); }
+.preset-note { margin:8px 0 22px; font-size:10px; line-height:1.7; opacity:.7; }
+.settings-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:22px; padding-top:16px; border-top:1px solid #ffffff20; }
+.settings-actions button { min-height:44px; padding:8px; border:1px solid #ffffff26; border-radius:9px; background:#ffffff0d; color:inherit; font-size:11px; }
+.settings-actions button:last-child { grid-column:1/-1; }
+.settings-actions button:hover { background:#ffffff22; }
+.settings-actions button:focus-visible, #theme-preset:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
+.brand-emblem, .header-actions .save-button { background:var(--ink); border-color:var(--ink); color:var(--paper); }
+.wordmark-en, .stage-note, .artwork-title p, .footer, .swatch::before { color:var(--muted); }
+.collection-label, .header-actions .icon-button, .artwork-bar, .face-picker, .depth-toggle, .title-line > span, dialog { border-color:var(--line); }
+.collection-label #edition, .title-line h1, dialog h2 { color:var(--ink); }
+.artwork-bar, dialog { background:linear-gradient(120deg,#fff,var(--paper)); }
+.artwork-kicker, .dialog-mark, .foil-row output, .swatch[aria-pressed="true"]::before { color:var(--accent); }
+.artwork-kicker::before, .stage-note > span:first-child::before { background:var(--accent); }
+.title-line > span, .face-picker, .depth-toggle, .depth-toggle[aria-expanded="true"] { background:var(--control); color:var(--ink); }
+.face-picker button[aria-pressed="true"], .finish-heading, .foil-row { color:var(--ink); }
+.swatch[aria-pressed="true"]::after { border-color:var(--accent); }
+input[type="range"] { accent-color:var(--accent); }
+.parameter-panel { bottom:190px; color:#fff; background:linear-gradient(135deg,color-mix(in srgb,var(--ink),var(--accent) 25%),var(--ink)); border-color:var(--accent); }
+.panel-heading::after, .range-row, .range-row output { color:inherit; }
+.notice { background:var(--ink); color:#fff; }
+.header-actions .icon-button:not(.save-button) { color:var(--ink); }
+.header-actions .icon-button:hover:not(:disabled), .depth-toggle:hover { background:var(--control); border-color:var(--accent); color:var(--ink); }
+.header-actions .save-button:hover:not(:disabled) { background:var(--accent); color:#fff; }
+.depth-toggle[aria-expanded="true"] { border-color:var(--accent); }
+input[type="range"]::-webkit-slider-thumb { background:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+input[type="range"]::-moz-range-thumb { background:var(--accent); }
+.parameter-panel input[type="range"]::-webkit-slider-thumb { background:color-mix(in srgb,var(--accent),#fff 65%); border-color:var(--ink); box-shadow:0 0 0 1px var(--accent); }
+.parameter-panel input[type="range"]::-moz-range-thumb { background:color-mix(in srgb,var(--accent),#fff 65%); border-color:var(--ink); }
+@media (max-width:1150px) and (min-width:961px) { .parameter-panel { bottom:235px; } }
+@media (max-height:820px) { .parameter-panel { position:static; width:calc(100% - 48px); max-width:600px; margin:24px auto 0; } }

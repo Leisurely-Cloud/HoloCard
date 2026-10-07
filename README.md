@@ -15,6 +15,7 @@
 | 全息材质 | 提供珠光、银箔、烫金和原画显示模式，可调整光泽 |
 | 主题背面 | 支持独立背面插画，并在网页中排版标题、编号与系列信息 |
 | 交互控制 | 支持鼠标与触摸旋转、双指缩放、翻面、景深调整及 PNG 截图下载 |
+| 主题与配置 | 黑金水墨、蓝银深海、蜡笔彩色预设；支持导出、导入 JSON 与恢复作品默认设置 |
 | 界面配置 | 支持品牌名称、部分配色参数及移动端布局 |
 | 可编辑输出 | 保留分层 PNG、卡片配置、Blender 场景与网页资源 |
 | 自动验证 | 检查网页交互、资源加载、截图下载、窄屏布局与减弱动态效果设置 |
@@ -118,6 +119,12 @@ node scripts/verify_web.mjs ../card-project
 
 验证脚本启动独立服务与无头浏览器，将报告和截图写入项目的 `verification/` 目录。浏览器可通过 `RUIC_BROWSER` 环境变量或 `--browser` 参数指定。自动检查之外，仍需检查正背面、倾斜视角和文字可读性。
 
+### 4. 主题与参数保存
+
+打开“主题与景深”面板，选择预设或手动调整参数，再用“导出配置”下载当前 `card-config.json`。“导入配置”会校验文件并应用材质、配色和景深，保留当前作品素材；“恢复默认”回到页面加载时的原始设置与正面朝向。
+
+调整暂存在当前页面。要在重新加载后保留效果，可将导出文件替换到 `web/card-config.json`。重新运行流水线前，还需将导出的 `parameters`、`appearance` 和 `ui.palette` 合并到项目根目录配置。详见[开发说明](references/development.md#presentation-settings)。
+
 ## 配置说明
 
 | 配置项 | 作用 |
@@ -177,7 +184,7 @@ assets/web-template/
 ```bash
 python scripts/test_pipeline.py
 python scripts/test_checkerboard.py
-node --test scripts/test_viewer.mjs scripts/test_experience.mjs
+node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
 ```
 
 修改网页模块后需重新生成 `app.bundle.js`。模块边界、构建方式与完整验证流程见 [开发说明](references/development.md) 和 [验证说明](references/verification.md)。

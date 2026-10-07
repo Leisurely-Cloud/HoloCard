@@ -3,7 +3,10 @@ export function applyBrand(config, document) {
   if (brand) brand.firstChild.textContent = config.ui?.brandName || "光屿";
   const brandEn = document.querySelector(".wordmark-en");
   if (brandEn) brandEn.textContent = config.ui?.brandEnglish || "HOLO ATELIER";
-  for (const [key, value] of Object.entries(config.ui?.palette || {})) {
-    if (["ink", "muted", "accent", "focus", "control", "line"].includes(key)) document.documentElement.style.setProperty(`--${key}`, value);
+  for (const key of ["ink", "muted", "accent", "focus", "control", "line"]) {
+    const value = config.ui?.palette?.[key];
+    if (value !== undefined) document.documentElement.style.setProperty(`--${key}`, value);
+    else document.documentElement.style.removeProperty(`--${key}`);
   }
+  document.documentElement.style.setProperty('--paper', config.appearance?.background || '#fafafa');
 }

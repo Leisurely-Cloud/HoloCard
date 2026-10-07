@@ -19,7 +19,7 @@
  *
  * Usage:
  *   node scripts/verify_web.mjs <project-dir | url> [--out DIR] [--browser PATH]
- *                               [--only desktop|mobile|experience|performance] [--keep-server]
+ *                               [--only desktop|mobile|experience|settings|performance] [--keep-server]
  *
  * Set --browser (or RUIC_BROWSER) to name the Chromium-family executable; otherwise
  * the usual install locations, PATH and Playwright's browser cache are searched.
@@ -113,8 +113,8 @@ if (!target) {
   process.exit(2);
 }
 const only = flag("--only");
-if (only && !["desktop", "mobile", "performance", "experience"].includes(only)) {
-  console.error("--only must be desktop, mobile, performance or experience");
+if (only && !["desktop", "mobile", "performance", "experience", "settings"].includes(only)) {
+  console.error("--only must be desktop, mobile, performance, experience or settings");
   process.exit(2);
 }
 const keepServer = argv.includes("--keep-server");
@@ -638,7 +638,7 @@ async function experiencePass(base, out) {
     await touch("touchCancel", []);
     check("cancelled touch releases the drag state", await cdp.eval("!window.__holo.getState().dragging&&!document.getElementById('stage').classList.contains('dragging')"));
     const layout = await cdp.eval(`(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,
-      targets:[...document.querySelectorAll('.header-actions button,.face-picker button,.swatch,#depth-toggle')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id||el.dataset.finish,w:r.width,h:r.height}}),
+      targets:[...document.querySelectorAll('.header-actions button,.face-picker button,.swatch,#depth-toggle,#theme-preset,.settings-actions button')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id||el.dataset.finish,w:r.width,h:r.height}}),
       panelParent:document.getElementById('parameter-panel').parentElement.tagName,
       dpr:window.__holo.renderer.getPixelRatio()}))()`);
     check("phone controls have 44px targets and do not overflow", !layout.overflow && layout.targets.every(t=>t.w>=44&&t.h>=44) && layout.panelParent === "MAIN", JSON.stringify(layout));
@@ -704,6 +704,57 @@ async function performancePass(base, out) {
   } finally { close(); }
 }
 
+async function settingsChecks(cdp, check, out, fallback = false) {
+  const folder = path.join(out, fallback ? 'settings-fallback' : 'settings');
+  mkdirSync(folder, { recursive: true });
+  const original = await cdp.eval("fetch('./card-config.json').then(r=>r.json())");
+  const snapshot = () => cdp.eval(`(()=>{const $=id=>document.getElementById(id);return {foil:+$('foil').value,scale:+$('scale').value,
+    depth:+$('depth').value,fx:+$('fx-depth').value,bg:+$('bg-depth').value,finish:document.querySelector('[data-finish][aria-pressed="true"]').dataset.finish,
+    paper:getComputedStyle(document.documentElement).getPropertyValue('--paper').trim(),ink:document.documentElement.style.getPropertyValue('--ink'),
+    uniform:window.__holo.uniforms?.uFoil.value,flipped:window.__holo.getState().flipped}})()`);
+  const initial = await snapshot();
+  const select = async id => { await cdp.eval(`(()=>{const el=document.getElementById('theme-preset');el.value='${id}';el.dispatchEvent(new Event('change',{bubbles:true}))})()`); await sleep(250); };
+  for (const [id,finish,paper] of [['ink','gold','#faf8f2'],['abyss','silver','#f6faff'],['crayon','original','#fffaf1']]) {
+    await select(id); const s = await snapshot();
+    check(`${fallback?'CSS':'WebGL'} ${id} preset changes material and page palette`, s.finish === finish && s.paper === paper && (fallback || s.uniform === s.foil));
+    await cdp.shot(`preset-${id}${fallback?'-fallback':''}`,out);
+  }
+  await select('abyss');
+  await cdp.eval("(()=>{const el=document.getElementById('foil');el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))})()");
+  check('manual changes clear preset selection', await cdp.eval("document.getElementById('theme-preset').value === ''"));
+  await cdp.send('Browser.setDownloadBehavior', {behavior:'allow',downloadPath:folder,eventsEnabled:true});
+  await cdp.eval("document.getElementById('export-settings').click()");
+  const exportedPath = path.join(folder,'card-config.json');
+  for (let i=0;i<40&&!existsSync(exportedPath);i++) await sleep(100);
+  const exported = existsSync(exportedPath) ? JSON.parse(readFileSync(exportedPath,'utf8')) : null;
+  check('downloaded JSON saves real zero value and preserves title, assets and source mode', exported?.parameters.foil===0 && exported.title===original.title
+    && JSON.stringify(exported.assets)===JSON.stringify(original.assets) && exported.sourceMode===original.sourceMode);
+  const {root:{nodeId}}=await cdp.send('DOM.getDocument');
+  const {nodeId:input}=await cdp.send('DOM.querySelector',{nodeId,selector:'#settings-file'});
+  const loadFile = async filename => { await cdp.send('DOM.setFileInputFiles',{nodeId:input,files:[filename]}); await sleep(300); };
+  const valid = path.join(folder,'import.json');
+  writeFileSync(valid,JSON.stringify({parameters:{foil:0,subjectScale:1.001,subjectDepth:-.123,effectsDepth:.456,backgroundDepth:-1.25},
+    appearance:{finish:'gold',background:'rgb(250 248 242)'},assets:{subject:'untrusted.png'},sourceMode:'changed',title:'changed'}));
+  await loadFile(valid); const imported=await snapshot();
+  check('file import preserves signed depths, zero and scale precision', imported.foil===0 && imported.scale===1.001 && imported.depth===-.123 && imported.fx===.456 && imported.bg===-1.25 && imported.finish==='gold' && imported.paper==='#faf8f2'
+    && (fallback || await cdp.eval("(()=>{const u=window.__holo.uniforms;return u.uFoil.value===0&&u.uScale.value===1.001&&u.uDepth.value===-.123&&u.uFxDepth.value===.456&&u.uBgDepth.value===-1.25})()")));
+  const invalid=path.join(folder,'invalid.json'); writeFileSync(invalid,'{"parameters":{"foil":0.2,"subjectScale":false}}');
+  await loadFile(invalid); const unchanged=await snapshot();
+  check('invalid import reports error and leaves all active settings intact', JSON.stringify(unchanged)===JSON.stringify(imported)
+    && await cdp.eval("document.getElementById('notice').textContent.includes('subjectScale')"));
+  await cdp.eval("document.getElementById('back').click();document.getElementById('reset-settings').click()"); await sleep(300);
+  check('reset restores original parameters, finish and palette and faces front', JSON.stringify(await snapshot())===JSON.stringify({...initial,flipped:false}));
+  await loadFile(exportedPath);
+  check('exported file can be reimported with its original zero foil', (await snapshot()).foil===0 && (await snapshot()).finish==='silver');
+  await cdp.eval("document.getElementById('reset-settings').click()");
+}
+async function settingsPass(base,out) {
+  const checks=[];
+  const check=(name,pass)=>{checks.push({name,pass:!!pass});console.log(`${pass?'PASS':'FAIL'}  ${name}`);};
+  const {cdp,close}=await launch({width:1440,height:1000},out);
+  try { await cdp.send('Page.navigate',{url:base}); await waitReady(cdp); await settingsChecks(cdp,check,out); return {checks}; }
+  finally {close();}
+}
 async function fallbackPass(base, out) {
   const checks = [];
   const check = (name, pass) => { checks.push({ name, pass: !!pass }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`); };
@@ -722,6 +773,7 @@ async function fallbackPass(base, out) {
     await sleep(150);
     await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
     check('CSS fallback supports real pinch zoom', await cdp.eval('window.__holo.getState().zoom>1'));
+    await settingsChecks(cdp,check,out,true);
     await cdp.shot('20-mobile-fallback',out);
     return {checks};
   } finally { close(); }
@@ -769,6 +821,11 @@ try {
     const p = await performancePass(base, outDir);
     report.passes.performance = p;
     failed += p.checks.filter(c => !c.pass).length;
+  }
+  if (!only || only === 'settings') {
+    const settings = await settingsPass(base,outDir);
+    report.passes.settings = settings;
+    failed += settings.checks.filter(c=>!c.pass).length;
   }
   if (!only || only === "experience") {
     const e = await experiencePass(base, outDir);

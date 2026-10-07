@@ -43,6 +43,10 @@ node scripts/verify_web.mjs <project> --only performance --out <measurement-dire
 
 On narrow coarse-pointer displays, presentation pixel ratio is capped at 1.5; desktop remains capped at 2. Original artwork textures and 1400×1800 screenshot export are retained. Continuous artwork targets 30 fps, with pointer/keyboard/control interaction returning to display cadence briefly. Reduced-motion static frames stop scheduling renders until state changes; background pages pause. Verify the final PNG bytes and dimensions after changing this policy.
 
+## Theme presets and portable parameters
+
+Use `node scripts/verify_web.mjs <project> --only settings` for the WebGL settings workflow; the default run also repeats it in CSS fallback. Check all three presets, manual overrides, the downloaded JSON bytes (including zero gloss), actual file-picker import, signed depths/scale precision, invalid-file recovery and restoration of the original palette and front pose. Inspect preset screenshots and the mobile settings panel. Imported files must retain the current title, image paths and model mode; exports preserve original project metadata. Verify that defaults mean the configuration fetched when the page loaded, rather than the last imported file.
+
 ## Delivery and wording
 
 - glTF cannot carry the custom Blender node graph: the page reproduces the effect in GLSL. Say that plainly, and never advertise pixel-identical offline and real-time output without proving it.

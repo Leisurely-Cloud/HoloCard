@@ -5,6 +5,7 @@ import { applyBrand } from "./viewer-ui.js";
 import { bindCardGestures } from "./gestures.js";
 import { createRenderLoop, viewerPixelRatio } from "./render-loop.js";
 import { createLoadingView } from "./loading.js";
+import { bindSettingsPanel, viewSettings, exportSettings } from "./view-settings.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 // Icons are inline data trees (icons.data.js) — zero sub-imports at runtime,
@@ -38,6 +39,8 @@ let auto = false,
 let targetX = -0.035,
   targetY = -0.15,
   noticeTimer;
+let settingsPanel;
+let presentation;
 const settings = [
   ["foil", "uFoil"],
   ["scale", "uScale"],
@@ -110,7 +113,7 @@ async function init() {
   const settingsHome = $("parameter-panel").parentElement;
   const responsiveSettings = () => {
     const panel = $("parameter-panel");
-    if (matchMedia("(max-width:960px)").matches) document.querySelector("main").append(panel);
+    if (matchMedia("(max-width:960px), (max-height:820px)").matches) document.querySelector("main").append(panel);
     else settingsHome.append(panel);
   };
   responsiveSettings();
@@ -136,6 +139,7 @@ async function init() {
     .filter(Boolean)
     .join(" / ");
   applyBrand(config, document);
+  presentation = viewSettings(config);
   loading.update("正在准备字体与画面");
   await document.fonts.load("500 42px Atelier");
   if (loading.terminal) return;
@@ -333,6 +337,8 @@ async function init() {
     getState: () => ({ auto, flipped, finish, zoom, dragging }),
   };
   setFinish(config.appearance?.finish || "pearl");
+  settingsPanel = bindSettingsPanel({ document, config, notice, read: readPresentation, apply: applyPresentation,
+    resetPose });
   setAuto(!media.matches);
   renderLoop = createRenderLoop({ render: animate, continuous: () => !media.matches || auto, visible: () => !document.hidden && !!window.__holo?.ready });
   document.addEventListener("visibilitychange", () => document.hidden ? renderLoop.pause() : renderLoop.wake());
@@ -398,11 +404,11 @@ async function fallback3D(error) {
   // ---- interaction state (independent of the WebGL path) ----
   let tx = -0.03, ty = -0.06, curX = 0, curY = 0, curFlip = 0, flipTarget = 0;
   let lastMove = 0, sway = !media.matches;
-  let scale = 1, depthScale = 1, bgScale = 1;
+  let scale = 1, depthScale = 1, bgScale = 1, fxScale = 1;
   let fallbackLoop;
   const applyLayers = () => {
     for (const [name, { el, z }] of layers) {
-      const s = name === "background" ? bgScale : 1;
+      const s = name === "background" ? bgScale : name === "effects" ? fxScale : 1;
       el.style.transform = `translateZ(${(z * depthScale * s).toFixed(2)}px)`;
     }
   };
@@ -459,6 +465,7 @@ async function fallback3D(error) {
     refreshIcons();
   };
   const fallbackFinish = (value) => {
+    finish = value;
     front.classList.remove("finish-gold", "finish-silver", "finish-pearl", "finish-original");
     front.classList.add("finish-" + value);
     document
@@ -488,7 +495,7 @@ async function fallback3D(error) {
     $(id).disabled = false;
     $(id).addEventListener("input", () => {
       const v = Number($(id).value);
-      $(output).textContent = v.toFixed(decimals);
+      $(output).textContent = id === 'foil' ? Math.round(v * 100) + '%' : v.toFixed(decimals);
       fn(v);
       fallbackLoop.wake(true);
     });
@@ -502,12 +509,16 @@ async function fallback3D(error) {
     bgScale = Math.max(0.1, 1 + v * 4);
     applyLayers();
   });
+  bindRange("fx-depth", "fx-depth-value", (v) => {
+    fxScale = Math.max(0.1, 1 + v * 4); applyLayers();
+  });
   document.querySelectorAll("[data-finish]").forEach((b) => {
     b.disabled = false;
     b.onclick = () => { fallbackFinish(b.dataset.finish); fallbackLoop.wake(); };
   });
   bindRange("foil", "foil-value", (v) => {
     front.style.setProperty("--foil-amount", v);
+    $("foil-value").textContent = Math.round(v * 100) + '%';
   }, 0);
   $("foil-value").textContent = Math.round(Number($("foil").value) * 100) + "%";
   front.style.setProperty("--foil-amount", $("foil").value);
@@ -519,6 +530,19 @@ async function fallback3D(error) {
   }
   applyLayers();
   fallbackFinish(config.appearance?.finish || "gold");
+  const applyFallback = state => {
+    presentation = state;
+    for (const [id] of settings) {
+      setRange(id, state.parameters[parameterKey(id)]);
+      $(id).dispatchEvent(new Event('input'));
+    }
+    fallbackFinish(state.appearance.finish);
+    applyBrand(exportSettings(config, state), document);
+    fallbackLoop.wake(true);
+  };
+  applyFallback(presentation);
+  settingsPanel = bindSettingsPanel({ document, config, notice, read: readPresentation, apply: applyFallback,
+    resetPose() { tx = -.03; ty = -.06; zoom = 1; sway = false; setFlip(false); } });
   notice("浏览器未开启 WebGL：已用轻量 3D 模式显示（层次保留）");
   window.__holo = { ready: false, error: String(error), fallback3d: true,
     getState: () => ({ flipped, zoom, dragging }) };
@@ -572,6 +596,30 @@ function setFinish(value) {
   $("foil").disabled = value === "original";
   renderLoop?.wake();
 }
+function readPresentation() {
+  return { ...presentation, parameters: Object.fromEntries(settings.map(([id]) => [parameterKey(id), Number($(id).value)])),
+    appearance: { ...presentation.appearance, finish } };
+}
+function parameterKey(id) {
+  return { foil: 'foil', scale: 'subjectScale', depth: 'subjectDepth', 'fx-depth': 'effectsDepth', 'bg-depth': 'backgroundDepth' }[id];
+}
+function setRange(id, value) {
+  const input = $(id);
+  // Preserve valid signed depths/scales from imported configs, even outside the ordinary slider range.
+  input.min = Math.min(Number(input.min), value);
+  input.max = Math.max(Number(input.max), value);
+  const fraction = String(value).split('.')[1];
+  if (fraction?.length > 2 || /e/i.test(String(value))) input.step = 'any';
+  input.value = value;
+}
+function applyPresentation(state) {
+  presentation = state;
+  settings.forEach(([id, name]) => { setRange(id, state.parameters[parameterKey(id)]); updateInput(id, name); });
+  setFinish(state.appearance.finish);
+  applyBrand(exportSettings(config, state), document);
+  renderer.setClearColor(state.appearance.background, 1);
+  renderLoop?.wake(true);
+}
 function faceLabels() {
   $("front").setAttribute("aria-pressed", String(!flipped));
   $("back").setAttribute("aria-pressed", String(flipped));
@@ -605,25 +653,16 @@ function updateInput(id, name) {
   renderLoop?.wake(true);
 }
 function reset() {
+  settingsPanel?.reset();
+  resetPose();
+}
+function resetPose() {
   targetX = -0.035;
   targetY = -0.15;
   zoom = 1;
   flipped = false;
   setAuto(false);
   faceLabels();
-  const p = config.parameters || {};
-  const defaults = {
-    foil: p.foil ?? 0.52,
-    scale: p.subjectScale ?? 1,
-    depth: p.subjectDepth ?? 0.32,
-    "fx-depth": p.effectsDepth ?? 0.14,
-    "bg-depth": p.backgroundDepth ?? -0.18,
-  };
-  settings.forEach(([id, name]) => {
-    $(id).value = defaults[id];
-    updateInput(id, name);
-  });
-  setFinish(config.appearance?.finish || "pearl");
   resize();
 }
 function toggleSettings(show = $("parameter-panel").hidden) {
@@ -642,7 +681,7 @@ function setupControls() {
     $("scale").min="0.92";$("scale").max="1.3";
   }
   settings.forEach(([id, name]) => {
-    $(id).value = uniforms[name].value;
+    setRange(id, uniforms[name].value);
     updateInput(id, name);
     $(id).addEventListener("input", () => updateInput(id, name));
   });
@@ -817,7 +856,7 @@ function animate(now) {
 function showRuntimeError(message) {
   createLoadingView($("loading")).fail(message);
   window.__holo = { ready: false, error: message };
-  document.querySelectorAll("button, input").forEach(element => {
+  document.querySelectorAll("button, input, select").forEach(element => {
     if (!$("loading").contains(element) && element.id !== "close-about") element.disabled = true;
   });
 }

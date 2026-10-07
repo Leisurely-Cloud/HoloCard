@@ -52,6 +52,8 @@ The bundled viewer includes blue/silver controls and responsive artwork informat
 
 For repository maintenance and module boundaries, see [references/development.md](references/development.md).
 
+The viewer's “主题与景深” panel offers three presentation presets and JSON export/import/reset. These change finish, gloss, supported depths, scale and UI palette while retaining the current artwork/model. Export uses the current control values and preserves project metadata; import validates before applying only supported presentation fields. For persistence and rebuild instructions, read the presentation-settings section in [references/development.md](references/development.md). Include preset switching, file round trips and reset when verifying changed controls.
+
 ## Resources
 
 - `scripts/run_pipeline.py`: one command from prepared assets to a served card — validate, Blender build, render, GLB export, viewer assembly, dependency install.
