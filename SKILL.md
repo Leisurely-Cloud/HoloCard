@@ -1,9 +1,9 @@
 ---
-name: ruic-card-skill
+name: holocard
 description: Generate interactive 3D holographic collectible-card websites from a user description or reference image, using layered artwork, Blender and Three.js. Includes project-local Blender installation, reusable parallax materials and browser verification. Host-agnostic — any harness that runs a multimodal model can use it, since the model draws the layer artwork and inspects the rendered frames. Use when the user asks for 全息闪卡, 镭射卡, 3D 卡牌网页, a holographic collectible card site, or an editable card.blend.
 ---
 
-# RuiC Card Skill
+# HoloCard
 
 Turn the user's description or uploaded reference into a finished, editable Blender card and an interactive Three.js page. Preserve the requested subject, style, typography and destination. This skill contains code and text only; generated artwork belongs in the user's output project. It is host-agnostic — nothing in it is specific to one harness or one vendor's model — and it needs a multimodal model: you produce the layer artwork and you look at the rendered frames, so the host has to be able to generate and inspect images.
 
@@ -60,7 +60,7 @@ The viewer's “构图与参数” panel offers manual adjustments and JSON expo
 - `scripts/ensure_blender.py`: official-release discovery, SHA-256 validation, project-local extraction. If the release index is unreachable but a verified package already sits in `<project>/tools/`, extracting it there is enough — the script returns as soon as it finds `tools/blender*/blender.exe`.
 - `scripts/build_card.py`, `scripts/export_web.py`: the editable Blender scene (parallax groups, foil, ink glints, stars, glow) and the geometry/material-role export.
 - `scripts/validate_assets.py`, `scripts/generate_typography.py`: layer validation (including the optional effects layer) and accurate transparent typography.
-- `scripts/verify_web.mjs`: end-to-end browser verification over the DevTools Protocol — locates a Chromium-family browser (an explicit `--browser`/`RUIC_BROWSER` wins, then the usual install locations, PATH, and Playwright's own downloads; on Linux it passes `--no-sandbox --disable-dev-shm-usage` so root and container runs work), starts the viewer on a free port, exercises every control in a desktop and a 390 px pass, compares captured frames, and writes `<project>/verification/report.json` plus screenshots. Node only, no dependencies.
+- `scripts/verify_web.mjs`: end-to-end browser verification over the DevTools Protocol — locates a Chromium-family browser (an explicit `--browser`/`HOLOCARD_BROWSER` wins, then the usual install locations, PATH, and Playwright's own downloads; on Linux it passes `--no-sandbox --disable-dev-shm-usage` so root and container runs work), starts the viewer on a free port, exercises every control in a desktop and a 390 px pass, compares captured frames, and writes `<project>/verification/report.json` plus screenshots. Node only, no dependencies.
 - `scripts/checkerboard_to_alpha.py`, `scripts/test_checkerboard.py`: deterministic conversion of checkerboard-painted fake transparency, with regression tests.
 - `assets/web-template/`: the responsive Three.js viewer: drag, wheel zoom, flip to the back, auto-play, four finishes, and sliders for 镭射 and the layer depths (画面比例 / 画面景深 / 特效景深 / 底纹景深). It ships as a single bundled file so per-module URLs cannot be blocked; rebuild it with `assets/web-template/bundle.sh` (bun, or esbuild when bun is absent) after editing `app.js`.
 - `scripts/package_skill.py`: text-only allowlist, content checks and ZIP verification for sharing the skill itself.

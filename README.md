@@ -1,4 +1,4 @@
-# RuiC Card Skill
+# HoloCard
 
 **中文** | [English](README.en.md)
 
@@ -16,8 +16,8 @@
 需要 Python 3.9+、Node.js 22+ 与 npm。Blender 建议使用 4.5 LTS，可由流水线自动下载，也可通过 `--blender` 指定已有程序；浏览器验证需要 Chrome 或 Edge。
 
 ```bash
-git clone https://github.com/Leisurely-Cloud/RuiC-card-skill.git ruic-card-skill
-cd ruic-card-skill
+git clone https://github.com/Leisurely-Cloud/HoloCard.git holocard
+cd holocard
 python -m pip install Pillow numpy
 ```
 
@@ -28,7 +28,7 @@ python -m pip install Pillow numpy
 向支持执行命令和查看图片的 Agent 提供参考图，并描述制作要求：
 
 ```text
-使用 ruic-card-skill，把这张图片做成全息闪卡。
+使用 holocard，把这张图片做成全息闪卡。
 配色、字体、材质和背面与图片风格匹配，标题“权威”，编号 No.001。
 ```
 

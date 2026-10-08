@@ -53,4 +53,4 @@ jobs:
       - name: Bundle viewer
         run: python -c "import sys; sys.path.insert(0, 'scripts'); from viewer_build import bundle_viewer; bundle_viewer('assets/web-template')"
       - name: Audit and package skill
-        run: python scripts/package_skill.py . --out ../ruic-card-skill.zip
+        run: python scripts/package_skill.py . --out ../holocard.zip
