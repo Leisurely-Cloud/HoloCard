@@ -705,8 +705,11 @@ async function performancePass(base, out) {
 }
 
 async function settingsChecks(cdp, check, out, fallback = false) {
-  const folder = path.join(out, fallback ? 'settings-fallback' : 'settings');
-  mkdirSync(folder, { recursive: true });
+  const parent = path.join(out, fallback ? 'settings-fallback' : 'settings');
+  mkdirSync(parent, { recursive: true });
+  // A fresh destination cannot accept a stale export from an earlier pass.
+  // Keep prior reports/files intact rather than recursively deleting user paths.
+  const folder = mkdtempSync(path.join(parent, 'run-'));
   const original = await cdp.eval("fetch('./card-config.json').then(r=>r.json())");
   const snapshot = () => cdp.eval(`(()=>{const $=id=>document.getElementById(id);return {foil:+$('foil').value,scale:+$('scale').value,
     depth:+$('depth').value,fx:+$('fx-depth').value,bg:+$('bg-depth').value,finish:document.querySelector('[data-finish][aria-pressed="true"]').dataset.finish,
@@ -762,6 +765,12 @@ async function fallbackPass(base, out) {
     await cdp.send('Page.navigate', { url:base });
     const ready = await waitReady(cdp);
     check('unavailable WebGL displays loaded CSS artwork', ready.fallback && await cdp.eval("document.getElementById('loading').hidden && [...document.querySelectorAll('.front3d img')].every(img=>img.complete&&img.naturalWidth>0)"));
+    check('CSS layers use authored signed depths with typography ahead', await cdp.eval(`(()=>{
+      const p=Object.fromEntries(['depth','bg-depth','fx-depth'].map(id=>[id,+document.getElementById(id).value]));
+      const z=Object.fromEntries([...document.querySelectorAll('[data-layer]')].map(el=>[el.dataset.layer,new DOMMatrixReadOnly(getComputedStyle(el).transform).m43]));
+      return Math.abs(z.subject-p.depth*100)<.01 && Math.abs(z.background-p['bg-depth']*100)<.01
+        && (!('effects' in z)||Math.abs(z.effects-p['fx-depth']*100)<.01) && z.text>z.subject;
+    })()`));
     await cdp.eval("document.getElementById('back').click()"); await sleep(600);
     check('CSS fallback flips and its information dialog closes', await cdp.eval("(()=>{document.getElementById('info').click();document.getElementById('close-about').click();return window.__holo.getState().flipped&&!document.getElementById('about').open})()"));
     const point = await cdp.eval("(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
@@ -774,6 +783,38 @@ async function fallbackPass(base, out) {
     await cdp.shot('20-mobile-fallback',out);
     return {checks};
   } finally { close(); }
+}
+
+async function shaderFallbackPass(base, out) {
+  const checks=[];
+  const check=(name,pass)=>{checks.push({name,pass:!!pass});console.log(`${pass?'PASS':'FAIL'}  ${name}`);};
+  const original=await (await fetch(new URL('app.bundle.js',base))).text();
+  const needle='if (shaderErrors.length)';
+  if (!original.includes(needle)) throw Error('Shader diagnostic fault injection target missing');
+  const faulted=original.replace(needle,'if (true /* verification: force shader failure */)');
+  const {cdp,close}=await launch({width:390,height:844},out);
+  try {
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    await cdp.send('Fetch.enable',{patterns:[{urlPattern:'*app.bundle.js',requestStage:'Request'}]});
+    cdp.on('Fetch.requestPaused',async event=>{
+      await cdp.send('Fetch.fulfillRequest',{requestId:event.requestId,responseCode:200,
+        responseHeaders:[{name:'Content-Type',value:'text/javascript; charset=utf-8'}],body:Buffer.from(faulted).toString('base64')});
+    });
+    await cdp.send('Page.navigate',{url:base});
+    const ready=await waitReady(cdp);
+    check('shader diagnostics recover to CSS without an abandoned canvas',ready.fallback && await cdp.eval("document.querySelectorAll('#stage canvas').length===0 && document.querySelectorAll('.fallback3d').length===1"));
+    const before=await cdp.eval('window.__holo.getState().zoom');
+    const point=await cdp.eval("(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:1,x:point.x-50,y:point.y},{id:2,x:point.x+50,y:point.y}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:1,x:point.x-60,y:point.y},{id:2,x:point.x+60,y:point.y}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    const after=await cdp.eval('window.__holo.getState().zoom');
+    check('shader-failure fallback handles each pinch once',Math.abs(after/before-1.2)<.01);
+    check('shader-failure fallback has no abandoned WebGL errors',cdp.consoleErrors.length===0);
+    await cdp.shot('21-shader-fallback',out);
+    return {checks};
+  } finally {close();}
 }
 
 let server = null;
@@ -831,6 +872,9 @@ try {
     const fallback = await fallbackPass(base, outDir);
     report.passes.fallback = fallback;
     failed += fallback.checks.filter(c => !c.pass).length;
+    const shaderFallback = await shaderFallbackPass(base, outDir);
+    report.passes.shaderFallback = shaderFallback;
+    failed += shaderFallback.checks.filter(c => !c.pass).length;
   }
 } finally {
   if (server && !keepServer) server.kill("SIGKILL");

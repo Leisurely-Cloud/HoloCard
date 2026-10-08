@@ -6,7 +6,7 @@ The existing `scripts/run_pipeline.py --project ...` entry point and JSON config
 - `viewer_build.py`: template copying, dependency installation and bundling. Template caches are excluded and a failed bundle stops the build instead of quietly shipping stale JavaScript.
 - `run_pipeline.py`: coordinates validation, Blender build/export and viewer assembly. Keep scene construction in build_card.py and geometry export in export_web.py.
 - `assets/web-template/app.js`: viewer lifecycle and interaction wiring. Material source is in shaders.js, back artwork/labels in back-art.js, independent plane placement in relief.js, branding in viewer-ui.js. All modules still ship as one app.bundle.js.
-- `loading.js`: terminal loading/error state and accessible progress UI. `gestures.js`: single-pointer rotation and two-pointer pinch tracking. `render-loop.js`: invalidation, visibility and render cadence; static reduced-motion frames sleep until invalidated.
+- `loading.js`: terminal loading/error state and accessible progress UI. `gestures.js`: single-pointer rotation and two-pointer pinch tracking. `render-loop.js`: invalidation, visibility and render cadence; static reduced-motion frames sleep until invalidated. `fallback-layout.js` maps signed presentation depths independently to CSS layer positions and keeps typography ahead.
 - `style.css`: base layout and fallback renderer. `ui.css`: visual treatment and responsive controls.
 - `view-settings.js`: validation, portable JSON export/import and original-settings restoration, shared by WebGL and CSS renderers.
 
@@ -36,4 +36,4 @@ Export downloads `card-config.json` containing actual control values merged into
 
 To persist a look in a built viewer, replace `web/card-config.json` with its exported file and reload. For pipeline regeneration, merge the exported `parameters`, `appearance` and `ui.palette` into the project's root `card-config.json` first; otherwise a rebuild uses the original root settings. The viewer cannot write files directly to the source project.
 
-Run `node --test scripts/test_settings.mjs` for configuration validation and round-trip invariants. `node scripts/verify_web.mjs <project> --only settings` verifies authored palette/font application, actual WebGL controls and downloaded JSON. The complete browser pass additionally checks file import and reset in CSS fallback.
+Run `node --test scripts/test_settings.mjs` for configuration validation and round-trip invariants, including preservation of custom palette tokens. `node scripts/verify_web.mjs <project> --only settings` verifies authored palette/font application, actual WebGL controls and downloaded JSON. Each settings pass uses a fresh download subdirectory so reusing a report directory cannot validate stale exports. The complete browser pass additionally checks file import/reset and signed layer ordering in CSS fallback, plus a forced shader failure to check that fallback pinch input is handled once.

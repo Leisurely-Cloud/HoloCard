@@ -34,6 +34,16 @@ test('imports only presentation fields and rejects invalid values before any mut
   assert.equal({}.polluted, undefined);
   assert.equal(before.parameters.foil, .52);
 });
+
+test('editing known colors preserves authored extension palette tokens on export', () => {
+  const config = { ui: { palette: { ink: '#123456', customHighlight: '#abcabc' } } };
+  const original = structuredClone(config);
+  const state = mergeSettings(viewSettings(config), parseSettings('{"ui":{"palette":{"ink":"#654321","customHighlight":"ignored"}}}'));
+  const exported = exportSettings(config, state);
+  assert.equal(exported.ui.palette.ink, '#654321');
+  assert.equal(exported.ui.palette.customHighlight, '#abcabc');
+  assert.deepEqual(config, original);
+});
 test('partial presentation edits preserve authored values without mutating their source', () => {
   const defaults = viewSettings({ ui: { palette: { ink: '#000' } } });
   const before = structuredClone(defaults);

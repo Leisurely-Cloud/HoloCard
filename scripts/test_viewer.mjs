@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutReliefLayers } from '../assets/web-template/relief.js';
+import { fallbackLayerDepths } from '../assets/web-template/fallback-layout.js';
 
 function mesh() {
   return { position: {z: 0}, userData: {baseScale: {value: 3}},
@@ -19,4 +20,22 @@ test('effects depth is independent; typography stays ahead; scaling is repeatabl
   assert.ok(layers.text[0].position.z > subjectZ);
   assert.equal(layers.subject[0].scale.value, scale);
   assert.equal(layers.text[0].scale.value, 3);
+});
+
+test('CSS fallback keeps signed depths independent and typography in front', () => {
+  const profile = { backgroundDepth: -.25, subjectDepth: .4, effectsDepth: .5 };
+  const z = fallbackLayerDepths(profile);
+  assert.equal(z.background, -25);
+  assert.equal(z.subject, 40);
+  assert.equal(z.effects, 50);
+  assert.ok(z.background < z.subject && z.subject < z.effects && z.effects < z.text);
+  const changed = fallbackLayerDepths({ ...profile, effectsDepth: -.3 });
+  assert.equal(changed.effects, -30);
+  assert.equal(changed.background, z.background);
+  assert.equal(changed.subject, z.subject);
+  assert.equal(changed.lineart, changed.subject + 1);
+  assert.ok(changed.text > changed.subject);
+  const zero = fallbackLayerDepths({ backgroundDepth: 0, subjectDepth: 0, effectsDepth: 0 });
+  assert.equal(zero.subject, 0);
+  assert.equal(zero.background, 0);
 });

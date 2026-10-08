@@ -1,6 +1,7 @@
 import { vertex, frontFragment, edgeFragment, backFragment, subjectFragment, effectsFragment, textFragment } from "./shaders.js";
 import { createBackCanvas } from "./back-art.js";
 import { layoutReliefLayers } from "./relief.js";
+import { fallbackLayerDepths } from "./fallback-layout.js";
 import { applyBrand } from "./viewer-ui.js";
 import { bindCardGestures } from "./gestures.js";
 import { createRenderLoop, viewerPixelRatio } from "./render-loop.js";
@@ -304,11 +305,6 @@ async function init() {
   }
   if (config.sourceMode === "relief" && !reliefLayers.subject.length) throw Error("缺少独立人物层，请重新生成模型");
   addShadow();
-  setupControls();
-  document
-    .querySelectorAll("button[disabled],input[disabled]")
-    .forEach((el) => (el.disabled = false));
-  new ResizeObserver(resize).observe(stage);
   resize();
   renderer.compile(scene, camera);
   renderer.render(scene, camera);
@@ -322,6 +318,13 @@ async function init() {
     return;
   }
   if (!loading.finish()) return;
+  // Bind controls only after the shader path is usable. Otherwise fallback
+  // would inherit WebGL listeners that zoom twice or touch a disposed renderer.
+  setupControls();
+  document
+    .querySelectorAll("button[disabled],input[disabled]")
+    .forEach((el) => (el.disabled = false));
+  new ResizeObserver(resize).observe(stage);
   root.rotation.set(targetX, targetY, 0);
   window.__holo = {
     ready: true,
@@ -351,7 +354,6 @@ async function init() {
 // the cursor. If WebGL comes back, the full shader engine takes over instead.
 async function fallback3D(error) {
   console.warn("[holo-card] WebGL unavailable, using CSS-3D fallback:", error);
-  const roleZ = { background: -48, effects: -25, subject: -8, lineart: 24, text: 28 };
   const wrap = document.createElement("div");
   wrap.className = "fallback3d";
   const flipper = document.createElement("div");
@@ -375,7 +377,8 @@ async function fallback3D(error) {
     // White-background line art must not cover the subject: multiply drops the
     // white base and keeps only the dark contour strokes on top of the artwork.
     if (name === "lineart") layer.style.mixBlendMode = "multiply";
-    layers.set(name, { el: layer, z: roleZ[name] });
+    layer.dataset.layer = name;
+    layers.set(name, { el: layer });
   }
   const foil = document.createElement("div");
   foil.className = "foil3d";
@@ -404,12 +407,13 @@ async function fallback3D(error) {
   // ---- interaction state (independent of the WebGL path) ----
   let tx = -0.03, ty = -0.06, curX = 0, curY = 0, curFlip = 0, flipTarget = 0;
   let lastMove = 0, sway = !media.matches;
-  let scale = 1, depthScale = 1, bgScale = 1, fxScale = 1;
+  let scale = 1;
+  const depths = { ...presentation.parameters };
   let fallbackLoop;
   const applyLayers = () => {
-    for (const [name, { el, z }] of layers) {
-      const s = name === "background" ? bgScale : name === "effects" ? fxScale : 1;
-      el.style.transform = `translateZ(${(z * depthScale * s).toFixed(2)}px)`;
+    const positions = fallbackLayerDepths(depths);
+    for (const [name, { el }] of layers) {
+      el.style.transform = `translateZ(${positions[name].toFixed(2)}px)`;
     }
   };
   applyLayers();
@@ -502,15 +506,15 @@ async function fallback3D(error) {
   };
   bindRange("scale", "scale-value", (v) => { scale = v; });
   bindRange("depth", "depth-value", (v) => {
-    depthScale = Math.max(0.1, 1 + v * 4);
+    depths.subjectDepth = v;
     applyLayers();
   });
   bindRange("bg-depth", "bg-depth-value", (v) => {
-    bgScale = Math.max(0.1, 1 + v * 4);
+    depths.backgroundDepth = v;
     applyLayers();
   });
   bindRange("fx-depth", "fx-depth-value", (v) => {
-    fxScale = Math.max(0.1, 1 + v * 4); applyLayers();
+    depths.effectsDepth = v; applyLayers();
   });
   document.querySelectorAll("[data-finish]").forEach((b) => {
     b.disabled = false;
@@ -522,8 +526,7 @@ async function fallback3D(error) {
   }, 0);
   $("foil-value").textContent = Math.round(Number($("foil").value) * 100) + "%";
   front.style.setProperty("--foil-amount", $("foil").value);
-  // Seed scale from config; depth sliders start neutral (the layered base
-  // offsets above already encode the default depth profile).
+  // Seed the authored profile; every depth maps independently, preserving sign.
   if (config.parameters?.subjectScale) {
     scale = config.parameters.subjectScale;
     $("scale").value = config.parameters.subjectScale;

@@ -61,7 +61,7 @@ export function exportSettings(config, state) {
   const result = structuredClone(config);
   result.parameters = { ...result.parameters, ...state.parameters };
   result.appearance = { ...result.appearance, ...state.appearance };
-  result.ui = { ...result.ui, palette: { ...state.ui.palette } };
+  result.ui = { ...result.ui, palette: { ...result.ui?.palette, ...state.ui.palette } };
   return result;
 }
 export function bindSettingsPanel({ document, config, read, apply, resetPose, notice }) {
