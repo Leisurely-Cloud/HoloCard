@@ -2,11 +2,12 @@
 from pathlib import Path
 import argparse
 import subprocess
+import sys
 from ensure_blender import ensure_blender
 from validate_assets import validate
 from generate_typography import create
 from project_config import load_config
-from viewer_build import assemble_viewer, install_dependencies, bundle_viewer
+from viewer_build import assemble_viewer, install_dependencies, bundle_viewer, require_build_tools
 
 
 def build_scene(root, blender, scripts, skip_render=False):
@@ -31,6 +32,7 @@ def run_pipeline(project, blender_path=None, skip_render=False, skip_npm=False):
     if not (root / "assets" / "text.png").is_file():
         create(root)
     validate(root)
+    require_build_tools(install=not skip_npm)
     blender = ensure_blender(root, blender_path)
     build_scene(root, blender, scripts, skip_render)
     export_model(root, blender, scripts)
@@ -42,6 +44,10 @@ def run_pipeline(project, blender_path=None, skip_render=False, skip_npm=False):
 
 
 def main():
+    # Blender and Node emit UTF-8; keep redirected Python logs consistent too.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True)
     parser.add_argument("--blender")
@@ -50,8 +56,10 @@ def main():
     args = parser.parse_args()
     try:
         root = run_pipeline(args.project, args.blender, args.skip_render, args.skip_npm)
-    except (ValueError, FileNotFoundError) as error:
+    except (ValueError, FileNotFoundError, RuntimeError) as error:
         parser.error(str(error))
+    except subprocess.CalledProcessError as error:
+        parser.exit(1, "\nBuild command failed (exit " + str(error.returncode) + "); inspect the output above.\n")
     print("Completed:", root / "card.blend")
     print("Preview: node", root / "web" / "server.mjs")
     print("Open http://127.0.0.1:4173 after starting the server")

@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 import shutil
 import subprocess
-import sys
 from project_config import OPTIONAL_LAYERS, layer_names, web_config
 
 
@@ -29,24 +28,31 @@ def assemble_viewer(root, template):
     return web
 
 
+def require_build_tools(install=True):
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("Install Node.js 22+ and make node available on PATH before building")
+    npm = (shutil.which("npm.cmd") or shutil.which("npm")) if install else None
+    if install and not npm:
+        raise RuntimeError("Install npm with Node.js, or use --skip-npm with already installed viewer dependencies")
+    return node, npm
+
+
 def install_dependencies(web):
-    npm = shutil.which("npm.cmd") or shutil.which("npm")
-    if not npm:
-        raise RuntimeError("Install Node.js/npm, then run npm install --ignore-scripts in web/")
-    subprocess.run([npm, "install", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=web, check=True)
+    web = Path(web)
+    if not (web / "package-lock.json").is_file():
+        raise RuntimeError("Viewer package-lock.json is missing; restore it from assets/web-template before installing")
+    _, npm = require_build_tools()
+    subprocess.run([npm, "ci", "--include=dev", "--include=optional", "--ignore-scripts",
+                    "--no-audit", "--no-fund"], cwd=web, check=True)
 
 
 def bundle_viewer(web):
-    bun = shutil.which("bun")
-    if not bun:
-        local = Path.home() / ".bun" / "bin" / ("bun.exe" if sys.platform == "win32" else "bun")
-        bun = str(local) if local.is_file() else None
-    npx = shutil.which("npx.cmd") or shutil.which("npx")
-    if bun:
-        command = [bun, "build", "./app.js", "--outfile=./app.bundle.js", "--target=browser"]
-    elif npx:
-        command = [npx, "--yes", "esbuild@0.25.0", "app.js", "--bundle", "--format=esm", "--target=es2020", "--outfile=app.bundle.js"]
-    else:
-        raise RuntimeError("Install Node.js/npm or Bun to bundle the viewer")
+    web = Path(web)
+    node, _ = require_build_tools(install=False)
+    if not (web / "node_modules" / "esbuild" / "package.json").is_file():
+        raise RuntimeError("Local esbuild is missing; rerun the pipeline without --skip-npm, or run "
+                           "npm ci --include=dev --include=optional --ignore-scripts in " + str(web))
+    command = [node, "build.mjs"]
     # A failed build must not be reported as success using a stale template bundle.
     subprocess.run(command, cwd=web, check=True)

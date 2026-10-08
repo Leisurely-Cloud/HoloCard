@@ -1,1 +1,1 @@
-{"name":"holocard-web","private":true,"version":"1.0.0","type":"module","scripts":{"start":"node server.mjs"},"dependencies":{"three":"0.180.0"}}
+{"name":"holocard-web","private":true,"version":"1.0.0","type":"module","scripts":{"start":"node server.mjs","build":"node build.mjs"},"dependencies":{"three":"0.180.0"},"devDependencies":{"esbuild":"0.25.0"}}

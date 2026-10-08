@@ -14,6 +14,21 @@ Run `python scripts/test_pipeline.py` and `node --test scripts/test_viewer.mjs s
 
 Keep generated card projects, images, dependency caches and credentials outside the skill. Use package_skill.py to audit a shareable ZIP.
 
+## Locked viewer toolchain
+
+Both the pipeline and CI install viewer dependencies with `npm ci --include=dev --include=optional --ignore-scripts --no-audit --no-fund`. Keep `package.json` and `package-lock.json` in sync. Development and platform-specific optional dependencies are included even when the caller's environment omits them, since the local esbuild package and its executable are needed to build. Dependency lifecycle scripts are disabled.
+
+`assets/web-template/build.mjs` is the shared build entry point. It verifies the installed esbuild version against the exact version in `package.json`, then builds the self-contained browser ESM bundle. Python invokes it with Node; `npm run build` and `bundle.sh` use the same entry point. Bundling uses local dependencies and does not fetch a tool or choose one from the global environment.
+
+For a template rebuild, run from the repository root:
+
+```bash
+npm ci --include=dev --include=optional --ignore-scripts --no-audit --no-fund --prefix assets/web-template
+npm run build --prefix assets/web-template
+```
+
+The pipeline checks for Node and, unless `--skip-npm` is used, npm before starting Blender. `--skip-npm` requires the locked dependencies to be already installed in the output viewer; missing or stale esbuild fails clearly instead of using a pre-existing bundle. Once dependencies are installed, this build step also works offline. Serving the bundled viewer does not require these build dependencies. CLI stdout and stderr use UTF-8 so redirected logs retain Chinese paths alongside Blender and Node output.
+
 Environment overrides use `HOLOCARD_BROWSER` and `HOLOCARD_BLENDER_BASE`. The previous `RUIC_BROWSER` and `RUIC_BLENDER_BASE` names remain supported as fallbacks; the HoloCard names take precedence when both are set.
 
 ## Configuration contract

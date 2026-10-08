@@ -2,7 +2,7 @@
 from pathlib import Path
 import argparse,hashlib,json,re,zipfile
 ALLOWED={'.md','.py','.js','.mjs','.cjs','.json','.yaml','.yml','.css','.html','.txt','.sh'}
-SPECIAL={'LICENSE','.gitignore'}
+SPECIAL={'LICENSE','.gitignore','.gitattributes'}
 SKIP={'.git','__pycache__','node_modules'}
 # Generated single-file viewer bundle: still required to be UTF-8 text, but its
 # minified contents legitimately contain SVG/encoded strings from three.js.

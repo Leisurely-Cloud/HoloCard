@@ -49,7 +49,7 @@ jobs:
       - name: Viewer regression tests
         run: node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
       - name: Install viewer dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund --prefix assets/web-template
+        run: python -c "import sys; sys.path.insert(0, 'scripts'); from viewer_build import install_dependencies; install_dependencies('assets/web-template')"
       - name: Bundle viewer
         run: python -c "import sys; sys.path.insert(0, 'scripts'); from viewer_build import bundle_viewer; bundle_viewer('assets/web-template')"
       - name: Audit and package skill

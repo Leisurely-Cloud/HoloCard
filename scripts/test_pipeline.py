@@ -1,13 +1,15 @@
 """Regression checks for assembly boundaries and build failures."""
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from project_config import web_config, load_config, validate_config
-from viewer_build import assemble_viewer, bundle_viewer
+from viewer_build import assemble_viewer, bundle_viewer, install_dependencies, require_build_tools
 from run_pipeline import run_pipeline
 
 
@@ -110,6 +112,19 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('parameters.foil', result.stderr)
         self.assertNotIn('Traceback', result.stderr)
 
+    def test_cli_reports_unicode_paths_in_utf8_even_when_redirected(self):
+        missing = self.root / '中文 空格 卡片'
+        (missing / 'assets').mkdir(parents=True)
+        (missing / 'card-config.json').write_text('{"title": "Test"}', encoding='utf8')
+        (missing / 'assets/text.png').write_bytes(b'fixture prevents typography generation')
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('run_pipeline.py')),
+                                 '--project', str(missing)], env={**os.environ, 'PYTHONIOENCODING': 'ascii'},
+                                capture_output=True, encoding='utf8')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(missing.name, result.stderr)
+        self.assertIn('subject.png', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+
     def test_project_fonts_are_validated_and_art_direction_is_preserved(self):
         config = {'title': 'Ink card', 'ui': {'fonts': {'display': 'KaiTi, serif', 'body': 'sans-serif'}},
                   'artDirection': {'medium': 'ink', 'observations': 'fine contours'}}
@@ -173,9 +188,73 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual((web / 'card-config.json').read_text(), 'previous config')
 
     def test_failed_bundle_propagates_instead_of_using_stale_output(self):
-        with patch('viewer_build.shutil.which', return_value='bun'), patch('viewer_build.subprocess.run', side_effect=subprocess.CalledProcessError(1, ['bun'])):
+        (self.root / 'node_modules/esbuild').mkdir(parents=True)
+        (self.root / 'node_modules/esbuild/package.json').write_text('{}')
+        (self.root / 'app.bundle.js').write_text('previous bundle')
+        with patch('viewer_build.shutil.which', return_value='node'), patch('viewer_build.subprocess.run', side_effect=subprocess.CalledProcessError(1, ['node'])):
             with self.assertRaises(subprocess.CalledProcessError):
                 bundle_viewer(self.root)
+        self.assertEqual((self.root / 'app.bundle.js').read_text(), 'previous bundle')
+
+    def test_missing_lock_stops_before_install_and_preserves_dependencies(self):
+        (self.root / 'node_modules').mkdir()
+        marker = self.root / 'node_modules/keep.txt'
+        marker.write_text('installed dependency')
+        with patch('viewer_build.subprocess.run') as command:
+            with self.assertRaisesRegex(RuntimeError, 'package-lock.json'):
+                install_dependencies(self.root)
+            command.assert_not_called()
+        self.assertEqual(marker.read_text(), 'installed dependency')
+
+    def test_missing_local_bundler_does_not_fetch_an_external_tool(self):
+        (self.root / 'app.bundle.js').write_text('previous bundle')
+        with patch('viewer_build.shutil.which', return_value='node'), patch('viewer_build.subprocess.run') as command:
+            with self.assertRaisesRegex(RuntimeError, 'Local esbuild is missing'):
+                bundle_viewer(self.root)
+            command.assert_not_called()
+        self.assertEqual((self.root / 'app.bundle.js').read_text(), 'previous bundle')
+
+    def test_offline_build_needs_node_but_not_npm(self):
+        with patch('viewer_build.shutil.which', side_effect=lambda name: 'node' if name == 'node' else None):
+            self.assertEqual(require_build_tools(install=False), ('node', None))
+            with self.assertRaisesRegex(RuntimeError, 'Install npm'):
+                require_build_tools()
+
+    def test_cli_missing_node_stops_before_blender_without_traceback(self):
+        from PIL import Image
+        subject = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+        subject.paste((0, 0, 0, 255), (0, 0, 128, 256))
+        for name in ('subject', 'text'):
+            subject.save(self.root / 'assets' / (name + '.png'))
+        Image.new('RGB', (256, 256), 'white').save(self.root / 'assets/background.png')
+        lineart = Image.new('L', (256, 256), 255)
+        lineart.paste(0, (0, 0, 128, 256))
+        lineart.save(self.root / 'assets/lineart.png')
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('run_pipeline.py')),
+                                 '--project', str(self.root)], env={**os.environ, 'PATH': ''},
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('Install Node.js', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+        self.assertFalse((self.root / 'tools').exists())
+        self.assertFalse((self.root / 'card.blend').exists())
+
+    @unittest.skipUnless(shutil.which('node'), 'Node.js required')
+    def test_stale_local_compiler_cannot_overwrite_a_bundle(self):
+        (self.root / 'package.json').write_text(json.dumps({'devDependencies': {'esbuild': '0.25.0'}}))
+        template = Path(__file__).resolve().parent.parent / 'assets/web-template/build.mjs'
+        shutil.copyfile(template, self.root / 'build.mjs')
+        module = self.root / 'node_modules/esbuild'
+        module.mkdir(parents=True)
+        (module / 'package.json').write_text(json.dumps({'type': 'module', 'exports': './index.js'}))
+        (module / 'index.js').write_text("export const version = '0.24.0'; export function build(){ throw Error('Wrong compiler was executed'); }")
+        (self.root / 'app.bundle.js').write_text('previous bundle')
+        result = subprocess.run([shutil.which('node'), str(self.root / 'build.mjs')],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('differs from the pinned 0.25.0', result.stderr)
+        self.assertNotIn('Wrong compiler was executed', result.stderr)
+        self.assertEqual((self.root / 'app.bundle.js').read_text(), 'previous bundle')
 
     def test_invalid_assets_stop_before_blender_is_started(self):
         (self.root / 'assets/text.png').write_bytes(b'fixture')
