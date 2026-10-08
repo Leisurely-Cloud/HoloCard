@@ -4,7 +4,7 @@
 
 Turn a description or reference image into an interactive 3D holographic card, with a standalone viewer and an editable Blender project. Use it as an Agent Skill or build from the command line.
 
-![Ink-wash koi in black and gold: rotation and flip recorded from the actual viewer](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif)
+![DeepSeek-inspired character in blue and silver: relief, rotation and flip recorded from the actual viewer](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif?v=deepseek-relief)
 
 ## Features
 
