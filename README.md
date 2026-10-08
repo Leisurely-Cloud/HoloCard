@@ -4,7 +4,7 @@
 
 将描述或参考图片制作成可交互的 3D 全息卡片，输出独立网页与可编辑的 Blender 工程。支持作为 Agent Skill 使用，也可通过命令行构建。
 
-![DeepSeek 娘 · 蓝银浮雕卡，实际网页旋转与翻面演示](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif?v=deepseek-relief)
+![DeepSeek 娘 · 蓝银浮雕卡，网页效果旋转与翻面演示](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif?v=deepseek-smooth20)
 
 ## 功能
 
