@@ -1,4 +1,4 @@
-# RuiC Card Skill
+# HoloCard
 
 [中文](README.md) | **English**
 
@@ -16,8 +16,8 @@ Turn a description or reference image into an interactive 3D holographic card, w
 Requires Python 3.9+, Node.js 22+ and npm. Blender 4.5 LTS is recommended; the pipeline can download it automatically, or use an existing executable with `--blender`. Browser verification requires Chrome or Edge.
 
 ```bash
-git clone https://github.com/Leisurely-Cloud/RuiC-card-skill.git ruic-card-skill
-cd ruic-card-skill
+git clone https://github.com/Leisurely-Cloud/HoloCard.git holocard
+cd holocard
 python -m pip install Pillow numpy
 ```
 
@@ -28,7 +28,7 @@ For Skill use, place the repository in your host's skill directory and make [SKI
 Give an agent that can run commands and inspect images a reference image and a request:
 
 ```text
-Use ruic-card-skill to turn this image into a holographic card.
+Use holocard to turn this image into a holographic card.
 Match the palette, typography, material and back to the image's style.
 Use the title "权威" and edition No.001.
 ```

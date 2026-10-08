@@ -1,5 +1,5 @@
 /**
- * End-to-end browser verification for a RuiC-card-skill viewer.
+ * End-to-end browser verification for a HoloCard viewer.
  *
  * references/verification.md asks for the running page to be driven, not merely
  * fetched: drag in both directions, wheel zoom, flip, reset, the keyboard, every
@@ -21,7 +21,7 @@
  *   node scripts/verify_web.mjs <project-dir | url> [--out DIR] [--browser PATH]
  *                               [--only desktop|mobile|experience|settings|performance] [--keep-server]
  *
- * Set --browser (or RUIC_BROWSER) to name the Chromium-family executable; otherwise
+ * Set --browser (or HOLOCARD_BROWSER) to name the Chromium-family executable; otherwise
  * the usual install locations, PATH and Playwright's browser cache are searched.
  *
  * Exit code is 0 only when every check passed. Screenshots and report.json land
@@ -127,7 +127,7 @@ mkdirSync(outDir, { recursive: true });
 // ---------------------------------------------------------------- browser
 // Explicitly requested first (and then it has to work), then the usual install
 // locations, then the bare names on PATH, then Playwright's own downloads.
-const requested = [process.env.RUIC_BROWSER, flag("--browser")].filter((v) => typeof v === "string" && v);
+const requested = [(process.env.HOLOCARD_BROWSER || process.env.RUIC_BROWSER), flag("--browser")].filter((v) => typeof v === "string" && v);
 const CANDIDATES = [
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -148,8 +148,8 @@ if (!browser) {
   console.error(
     requested.length
       ? `The requested browser is not runnable here: ${requested.join(", ")}\n` +
-        "Unset RUIC_BROWSER / drop --browser, or point it at a Chromium-family browser."
-      : "No Chromium-family browser found. Pass --browser <path-to-msedge-or-chrome> or set RUIC_BROWSER.\n" +
+        "Clear the browser environment override / drop --browser, or point it at a Chromium-family browser."
+      : "No Chromium-family browser found. Pass --browser <path-to-msedge-or-chrome> or set HOLOCARD_BROWSER.\n" +
         "Looked at the usual install locations, PATH, and Playwright's browser cache.",
   );
   process.exit(2);

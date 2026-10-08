@@ -14,6 +14,8 @@ Run `python scripts/test_pipeline.py` and `node --test scripts/test_viewer.mjs s
 
 Keep generated card projects, images, dependency caches and credentials outside the skill. Use package_skill.py to audit a shareable ZIP.
 
+Environment overrides use `HOLOCARD_BROWSER` and `HOLOCARD_BLENDER_BASE`. The previous `RUIC_BROWSER` and `RUIC_BLENDER_BASE` names remain supported as fallbacks; the HoloCard names take precedence when both are set.
+
 ## Configuration contract
 
 `load_config` validates before typography generation or Blender startup. `title` is a nonblank string; other metadata is optional and must be strings when supplied. Optional sections must be JSON objects. Missing optional fields retain the existing renderer defaults; extra metadata and extension fields are preserved.
