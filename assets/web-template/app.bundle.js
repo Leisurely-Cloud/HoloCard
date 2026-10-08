@@ -192,6 +192,20 @@ function layoutReliefLayers(reliefLayers2, { subjectDepth, effectsDepth, subject
   for (const mesh of reliefLayers2.text) mesh.position.z = titleZ;
 }
 
+// fallback-layout.js
+function fallbackLayerDepths(parameters) {
+  const background = parameters.backgroundDepth * 100;
+  const subject = parameters.subjectDepth * 100;
+  const effects = parameters.effectsDepth * 100;
+  return {
+    background,
+    subject,
+    effects,
+    lineart: subject + 1,
+    text: Math.max(0, background, subject, effects) + 28
+  };
+}
+
 // viewer-ui.js
 function applyBrand(config2, document2) {
   const brand = document2.querySelector(".wordmark-cn");
@@ -420,7 +434,7 @@ function exportSettings(config2, state) {
   const result = structuredClone(config2);
   result.parameters = { ...result.parameters, ...state.parameters };
   result.appearance = { ...result.appearance, ...state.appearance };
-  result.ui = { ...result.ui, palette: { ...state.ui.palette } };
+  result.ui = { ...result.ui, palette: { ...result.ui?.palette, ...state.ui.palette } };
   return result;
 }
 function bindSettingsPanel({ document: document2, config: config2, read, apply, resetPose: resetPose2, notice: notice2 }) {
@@ -31850,9 +31864,6 @@ async function init() {
   }
   if (config.sourceMode === "relief" && !reliefLayers.subject.length) throw Error("\u7F3A\u5C11\u72EC\u7ACB\u4EBA\u7269\u5C42\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6A21\u578B");
   addShadow();
-  setupControls();
-  document.querySelectorAll("button[disabled],input[disabled]").forEach((el) => el.disabled = false);
-  new ResizeObserver(resize).observe(stage);
   resize();
   renderer.compile(scene, camera);
   renderer.render(scene, camera);
@@ -31866,6 +31877,9 @@ async function init() {
     return;
   }
   if (!loading2.finish()) return;
+  setupControls();
+  document.querySelectorAll("button[disabled],input[disabled]").forEach((el) => el.disabled = false);
+  new ResizeObserver(resize).observe(stage);
   root.rotation.set(targetX, targetY, 0);
   window.__holo = {
     ready: true,
@@ -31896,7 +31910,6 @@ async function init() {
 }
 async function fallback3D(error) {
   console.warn("[holo-card] WebGL unavailable, using CSS-3D fallback:", error);
-  const roleZ = { background: -48, effects: -25, subject: -8, lineart: 24, text: 28 };
   const wrap = document.createElement("div");
   wrap.className = "fallback3d";
   const flipper = document.createElement("div");
@@ -31918,7 +31931,8 @@ async function fallback3D(error) {
     layer.append(img);
     front.append(layer);
     if (name === "lineart") layer.style.mixBlendMode = "multiply";
-    layers.set(name, { el: layer, z: roleZ[name] });
+    layer.dataset.layer = name;
+    layers.set(name, { el: layer });
   }
   const foil = document.createElement("div");
   foil.className = "foil3d";
@@ -31956,12 +31970,13 @@ async function fallback3D(error) {
   }
   let tx = -0.03, ty = -0.06, curX = 0, curY = 0, curFlip = 0, flipTarget = 0;
   let lastMove = 0, sway = !media.matches;
-  let scale = 1, depthScale = 1, bgScale = 1, fxScale = 1;
+  let scale = 1;
+  const depths = { ...presentation.parameters };
   let fallbackLoop;
   const applyLayers = () => {
-    for (const [name, { el, z }] of layers) {
-      const s = name === "background" ? bgScale : name === "effects" ? fxScale : 1;
-      el.style.transform = `translateZ(${(z * depthScale * s).toFixed(2)}px)`;
+    const positions = fallbackLayerDepths(depths);
+    for (const [name, { el }] of layers) {
+      el.style.transform = `translateZ(${positions[name].toFixed(2)}px)`;
     }
   };
   applyLayers();
@@ -32060,15 +32075,15 @@ async function fallback3D(error) {
     scale = v;
   });
   bindRange("depth", "depth-value", (v) => {
-    depthScale = Math.max(0.1, 1 + v * 4);
+    depths.subjectDepth = v;
     applyLayers();
   });
   bindRange("bg-depth", "bg-depth-value", (v) => {
-    bgScale = Math.max(0.1, 1 + v * 4);
+    depths.backgroundDepth = v;
     applyLayers();
   });
   bindRange("fx-depth", "fx-depth-value", (v) => {
-    fxScale = Math.max(0.1, 1 + v * 4);
+    depths.effectsDepth = v;
     applyLayers();
   });
   document.querySelectorAll("[data-finish]").forEach((b) => {
