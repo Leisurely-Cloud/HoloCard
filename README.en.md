@@ -4,6 +4,8 @@
 
 Turn a description or reference image into an interactive 3D holographic card, with a standalone viewer and an editable Blender project. Use it as an Agent Skill or build from the command line.
 
+![Ink-wash koi in black and gold: rotation and flip recorded from the actual viewer](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif)
+
 ## Features
 
 - Layered parallax and relief compositions, with artwork extending beyond the card.
@@ -21,7 +23,7 @@ cd holocard
 python -m pip install Pillow numpy
 ```
 
-For Skill use, place the repository in your host's skill directory and make [SKILL.md](SKILL.md) accessible. Initial Blender downloads and viewer dependency installation require network access.
+Alternatively, [download the Skill package](https://github.com/Leisurely-Cloud/HoloCard/releases/latest), extract the `holocard` folder into your host's skill directory, and make [SKILL.md](SKILL.md) accessible. Initial Blender downloads and viewer dependency installation require network access.
 
 ## Usage
 

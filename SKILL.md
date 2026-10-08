@@ -1,6 +1,8 @@
 ---
 name: holocard
 description: Generate interactive 3D holographic collectible-card websites from a user description or reference image, using layered artwork, Blender and Three.js. Includes project-local Blender installation, reusable parallax materials and browser verification. Host-agnostic — any harness that runs a multimodal model can use it, since the model draws the layer artwork and inspects the rendered frames. Use when the user asks for 全息闪卡, 镭射卡, 3D 卡牌网页, a holographic collectible card site, or an editable card.blend.
+metadata:
+  version: "1.0.0"
 ---
 
 # HoloCard

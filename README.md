@@ -4,6 +4,8 @@
 
 将描述或参考图片制作成可交互的 3D 全息卡片，输出独立网页与可编辑的 Blender 工程。支持作为 Agent Skill 使用，也可通过命令行构建。
 
+![跃龙门 · 黑金水墨锦鲤，实际网页旋转与翻面演示](https://raw.githubusercontent.com/Leisurely-Cloud/HoloCard/main/assets/holocard-demo.gif)
+
 ## 功能
 
 - 分层视差与浮雕构图，支持主体、特效和文字破框。
@@ -21,7 +23,7 @@ cd holocard
 python -m pip install Pillow numpy
 ```
 
-作为 Skill 使用时，将仓库放入宿主的技能目录，并让宿主读取 [SKILL.md](SKILL.md)。首次下载 Blender 和安装网页依赖需要联网。
+也可[下载 Skill 安装包](https://github.com/Leisurely-Cloud/HoloCard/releases/latest)，解压后将 `holocard` 文件夹放入宿主的技能目录，并让宿主读取 [SKILL.md](SKILL.md)。首次下载 Blender 和安装网页依赖需要联网。
 
 ## 使用
 
