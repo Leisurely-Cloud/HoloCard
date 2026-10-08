@@ -31,11 +31,27 @@
     ]
   },
   "backDesign": {
-    "primary": "#d6edff",
-    "secondary": "#82b3d2"
+    "primary": "#404b45",
+    "secondary": "#687b70"
   },
   "ui": {
     "brandName": "光屿",
-    "brandEnglish": "HOLO ATELIER"
+    "brandEnglish": "HOLO ATELIER",
+    "palette": {
+      "ink": "#303b36",
+      "muted": "#737e78",
+      "accent": "#687e70",
+      "focus": "#53695c",
+      "control": "#eef2ef",
+      "line": "#dce2de"
+    },
+    "fonts": {
+      "display": "\"Microsoft YaHei\", \"PingFang SC\", sans-serif",
+      "body": "\"Microsoft YaHei\", \"PingFang SC\", sans-serif"
+    }
+  },
+  "appearance": {
+    "finish": "pearl",
+    "background": "#fafafa"
   }
 }

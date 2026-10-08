@@ -170,7 +170,7 @@ button svg {
   inset: 0 0 30px;
   outline-offset: -10px !important;
   cursor: grab;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .stage.dragging {
   cursor: grabbing;
@@ -187,6 +187,7 @@ button svg {
 .fallback3d {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   perspective: 1000px;
   display: flex;
   align-items: center;
@@ -309,8 +310,8 @@ button svg {
     padding: 18px 22px;
   }
   .flipper3d {
-    width: 100%;
-    height: auto;
+    width: auto;
+    height: 100%;
     aspect-ratio: 2 / 3;
   }
 }

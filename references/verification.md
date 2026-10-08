@@ -27,6 +27,26 @@ A `ready` flag, a saved file or a matching grep is never evidence that the card 
 - Check layout around 390 px and at desktop width, and confirm the reduced-motion setting is respected.
 - `window.__holo` (`ready`, `config`, `renderer`, `root`, `uniforms`, `reset`, `flip`, `getState`) exists for scripted checks: drive a view, grab two frames and compare them. Image comparisons have to show observable rotation and a visible change after a depth or foil adjustment.
 
+## Loading, touch and render scheduling
+
+The default browser check also exercises real touch input, two-finger pinch, gesture cancellation, 44px phone control targets and scrolling outside the card. It pauses a subject-image request to inspect partial loading progress, fails that request to inspect the resource-specific error, then uses the retry button to recover. It also tests graphics-context loss/reload, reduced-motion rendering invalidation and the CSS fallback with WebGL disabled. These deliberate failures are isolated from the ordinary pass's clean-console assertions.
+
+Run just these checks with `node scripts/verify_web.mjs <project> --only experience`. Inspect the loading, error, mobile-touch and fallback screenshots; numerical checks do not establish legibility or composition. The stage reserves touch gestures for rotation and pinch zoom, while page scrolling and browser gestures remain available outside it.
+
+For before/after measurements, use the same artwork, viewport and browser:
+
+```bash
+node scripts/verify_web.mjs <project> --only performance --out <measurement-directory>
+```
+
+`performance.json` records readiness time, backing-canvas dimensions, pixel ratio and actual rendered-frame counts over timed normal-idle and reduced-motion samples. The harness uses a 390px viewport, device pixel ratio 2 and headless SwiftShader: these measurements are reproducible probes, not real-phone GPU or battery benchmarks. Avoid interpreting a lower render count as higher frame rate.
+
+On narrow coarse-pointer displays, presentation pixel ratio is capped at 1.5; desktop remains capped at 2. Original artwork textures and 1400×1800 screenshot export are retained. Continuous artwork targets 30 fps, with pointer/keyboard/control interaction returning to display cadence briefly. Reduced-motion static frames stop scheduling renders until state changes; background pages pause. Verify the final PNG bytes and dimensions after changing this policy.
+
+## Authored style and portable parameters
+
+Use `node scripts/verify_web.mjs <project> --only settings` for the WebGL settings workflow; the default run also repeats it in CSS fallback. Check application of the project's authored palette and fonts, manual overrides, downloaded JSON bytes (including zero gloss), actual file-picker import, signed depths/scale precision, invalid-file recovery and restoration of the original palette and front pose. Inspect the authored-style screenshot and mobile settings panel beside the actual artwork using [style-matching.md](style-matching.md). Imported files must retain the current title, image paths, model mode and fonts; exports preserve project metadata and art direction. Defaults mean the configuration fetched when the page loaded, rather than the last imported file. Interaction tests cannot certify aesthetic matching.
+
 ## Delivery and wording
 
 - glTF cannot carry the custom Blender node graph: the page reproduces the effect in GLSL. Say that plainly, and never advertise pixel-identical offline and real-time output without proving it.

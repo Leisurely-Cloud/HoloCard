@@ -1,3 +1,12 @@
+import { vertex, frontFragment, edgeFragment, backFragment, subjectFragment, effectsFragment, textFragment } from "./shaders.js";
+import { createBackCanvas } from "./back-art.js";
+import { layoutReliefLayers } from "./relief.js";
+import { fallbackLayerDepths } from "./fallback-layout.js";
+import { applyBrand } from "./viewer-ui.js";
+import { bindCardGestures } from "./gestures.js";
+import { createRenderLoop, viewerPixelRatio } from "./render-loop.js";
+import { createLoadingView } from "./loading.js";
+import { bindSettingsPanel, viewSettings, exportSettings } from "./view-settings.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 // Icons are inline data trees (icons.data.js) — zero sub-imports at runtime,
@@ -7,16 +16,20 @@ const icons = ICON_TREES;
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");
 const media = matchMedia("(prefers-reduced-motion: reduce)");
+const loading = createLoadingView($("loading"));
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-6, 6, 6, -6, 0.1, 100);
 camera.position.set(0, 0, 20);
 const inverse = new THREE.Matrix4();
+const viewportSize = new THREE.Vector2();
 const reliefLayers = { subject: [], effects: [], text: [] };
+const loadedTextures = new Set();
 let renderer,
   root,
   uniforms,
   config,
   shadow,
+  renderLoop,
   lastTime = 0,
   elapsed = 0;
 let auto = false,
@@ -26,8 +39,9 @@ let auto = false,
   zoom = 1;
 let targetX = -0.035,
   targetY = -0.15,
-  lastPointer = { x: 0, y: 0 },
   noticeTimer;
+let settingsPanel;
+let presentation;
 const settings = [
   ["foil", "uFoil"],
   ["scale", "uScale"],
@@ -35,193 +49,13 @@ const settings = [
   ["fx-depth", "uFxDepth"],
   ["bg-depth", "uBgDepth"],
 ];
-const vertex = `
-varying vec2 vUv;
-void main() {
-  vUv = vec2(uv.x, 1.0 - uv.y);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-const common = `
-precision highp float;
-varying vec2 vUv;
-uniform float uTime, uFoil, uScale, uDepth, uBgDepth, uFinish, uHasLine, uRelief, uSafeScale, uFxDepth, uHasFx;
-uniform vec2 uFit, uSafeOffset;
-uniform vec3 uView;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-float inside(vec2 p) { return step(0.,p.x)*step(0.,p.y)*step(p.x,1.)*step(p.y,1.); }
-vec2 parallax(vec2 uv, float depth) {
-  return uv + uView.xy / max(abs(uView.z), .4) * depth * .10;
-}
-vec3 spectrum(float phase) {
-  return .66 + .25 * cos(6.28318 * (phase + vec3(0., .33, .67)));
-}
-// Only "original" (uFinish ~ 2) disables the foil; pearl/silver/gold all use it.
-float strength() { return abs(uFinish - 2.0) < 0.05 ? 0. : uFoil; }
-vec3 film(vec2 uv) {
-  float phase = uv.x * .85 + uv.y * .55 + uView.x * 1.5 - uView.y * .9;
-  if (uFinish > 2.5) {
-    // 烫金 (gold foil): warm gold laminate that shifts with the viewing angle.
-    float hi = 0.5 + 0.5 * sin(phase * 6.28318);
-    float glint = 0.5 + 0.5 * cos((phase + 0.25) * 6.28318);
-    vec3 deep = vec3(.72, .50, .20);
-    vec3 bright = vec3(1.00, .90, .60);
-    return mix(deep, bright, hi * .7 + glint * .3);
-  }
-  vec3 color = spectrum(phase);
-  return mix(color, vec3(dot(color,vec3(.2126,.7152,.0722))), step(.5,uFinish));
-}
-float sweep(vec2 uv) {
-  return pow(.5+.5*sin((uv.x*.72+uv.y*.45+uView.x*1.2+uView.y*.6)*6.283),10.);
-}
-`;
-const frontFragment =
-  common +
-  `
-uniform sampler2D tSubject, tBackground, tText, tLine, tEffects;
-void main() {
-  vec2 uv = vUv;
-  vec2 su = ((parallax(uv,uDepth)-.5)*uScale/uFit+.5)*uSafeScale+uSafeOffset;
-  vec2 bu = parallax(uv,uBgDepth);
-  vec4 subject = texture2D(tSubject,clamp(su,0.,1.));
-  subject.a *= inside(su)*(1.-uRelief);
-  vec3 bg = texture2D(tBackground,clamp(bu,0.,1.)).rgb;
-  vec3 col = mix(bg,subject.rgb,subject.a);
-  if (uFinish > 2.5) col = col * vec3(1.02, .95, .78) + vec3(.05, .012, 0.0);
-  // Effects layer floats between the subject and the text: above the character,
-  // below the typography, with its own mid-depth parallax.
-  vec2 eu = parallax(uv,uFxDepth);
-  vec4 fx = texture2D(tEffects,clamp(eu,0.,1.));
-  col = mix(col,fx.rgb,fx.a*(1.-uRelief)*uHasFx);
-  vec3 foil = film(uv);
-  float amount = strength();
-  float luminance = dot(col,vec3(.2126,.7152,.0722));
-  float band = sweep(uv);
-  // Laminate changes with the card-local viewing direction; black print stays readable.
-  float goldBoost = uFinish > 2.5 ? 1.7 : 1.0;
-  col *= 1. - amount * .21 * (1.-foil) * (.2 + band*.8);
-  col += foil * amount * band * goldBoost * (.065 + .11*(1.-luminance));
-  float edge = 1.-smoothstep(.015,.06,min(min(uv.x,1.-uv.x),min(uv.y,1.-uv.y)));
-  col = mix(col,foil*.75+.21,edge*amount*(uFinish > 2.5 ? .42 : .3));
-  vec2 cell = floor(uv*vec2(480.,720.));
-  float flake = step(.994,hash(cell))*pow(.5+.5*sin(hash(cell+8.)*30.+uView.x*20.+uTime*.6),10.);
-  col += foil*flake*amount*.13;
-  float line = (1.-smoothstep(.06,.25,texture2D(tLine,clamp(su,0.,1.)).r))*uHasLine;
-  col += line*inside(su)*subject.a*band*amount*.055;
-  vec4 text = texture2D(tText,uv);
-  col = mix(col,text.rgb,text.a*(1.-uRelief));
-  gl_FragColor = vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-const edgeFragment =
-  common +
-  `
-void main() {
-  vec3 col = mix(vec3(.66,.69,.67),film(vUv)*.6+.35,strength()*.7);
-  gl_FragColor=vec4(pow(col,vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-const backFragment =
-  common +
-  `
-uniform sampler2D tBack;
-void main() {
-  vec2 uv=vec2(1.-vUv.x,vUv.y);
-  vec4 art=texture2D(tBack,uv);
-  vec3 col=vec3(.956,.961,.946);
-  col*=1.-strength()*.12*(1.-film(vUv));
-  col+=film(vUv)*sweep(vUv)*strength()*.055;
-  col=mix(col,art.rgb,art.a);
-  float detail = smoothstep(.12,.8,dot(art.rgb,vec3(.299,.587,.114)));
-  col += film(vUv)*sweep(vUv)*strength()*(.018+.075*detail);
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),1.);
-  #include <colorspace_fragment>
-}
-`;
-
-const subjectFragment = common + `
-uniform sampler2D tSubject;
-void main() {
-  vec4 art=texture2D(tSubject,vUv);
-  if(art.a<.06)discard;
-  vec2 px=1./vec2(1024.,1630.);
-  float inner=min(min(texture2D(tSubject,vUv+vec2(px.x*2.,0.)).a,texture2D(tSubject,vUv-vec2(px.x*2.,0.)).a),min(texture2D(tSubject,vUv+vec2(0.,px.y*2.)).a,texture2D(tSubject,vUv-vec2(0.,px.y*2.)).a));
-  vec3 col=art.rgb;
-  col+=film(vUv)*sweep(vUv)*strength()*.10;
-  col=mix(col,vec3(.86,.72,.40),(1.-inner)*.22);
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),art.a);
-  #include <colorspace_fragment>
-}
-`;
-const effectsFragment = common + `
-uniform sampler2D tEffects;
-void main() {
-  vec4 art=texture2D(tEffects,vUv);
-  // The relief effects layer is a pre-cut RGBA asset: use its real alpha so
-  // thorn/spark deco keeps its silhouette instead of a color-channel matte.
-  float alpha=art.a;
-  if(alpha<.015)discard;
-  vec3 col=art.rgb;
-  col+=film(vUv)*sweep(vUv)*strength()*.08;
-  gl_FragColor=vec4(pow(clamp(col,0.,1.),vec3(2.2)),alpha);
-  #include <colorspace_fragment>
-}
-`;
-const textFragment = common + `
-uniform sampler2D tText;
-void main(){vec4 art=texture2D(tText,vUv);if(art.a<.02)discard;gl_FragColor=vec4(pow(art.rgb,vec3(2.2)),art.a);
-  #include <colorspace_fragment>
-}
-`;
-
 function canvasTexture(canvas) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.NoColorSpace;
   return texture;
 }
 function backTexture(image) {
-  const c = document.createElement("canvas");
-  c.width = 1024;
-  c.height = 1536;
-  const ctx = c.getContext("2d");
-  if (image) {
-    ctx.drawImage(image, 0, 0, 1024, 1536);
-    ctx.textAlign = "center";
-    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
-    ctx.fillText(config.collection || "ART COLLECTION", 512, 122);
-    ctx.fillStyle = config.backDesign?.primary || "#d6edff";
-    ctx.font = '600 42px "Microsoft YaHei", sans-serif';
-    ctx.fillText(config.title, 512, 195);
-    ctx.font = '23px "Microsoft YaHei", sans-serif';
-    ctx.fillText(config.subtitle || "", 512, 1370);
-    ctx.fillStyle = config.backDesign?.secondary || "#82b3d2";
-    ctx.font = "500 19px Arial";
-    ctx.fillText(`${config.edition || ""}  /  PERSONAL COLLECTION`, 512, 1420);
-    return canvasTexture(c);
-  }
-  ctx.strokeStyle = "#aeb5aa";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(56, 56, 912, 1424);
-  ctx.strokeRect(72, 72, 880, 1392);
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#50594e";
-  ctx.font = "500 420px Atelier, Georgia, serif";
-  ctx.fillText((config.title || "A").slice(0, 1), 512, 846);
-  ctx.font = "24px Arial";
-  ctx.fillStyle = "#737b70";
-  ctx.fillText(config.collection || "WHITE ATELIER", 512, 245);
-  ctx.font = '34px "Songti SC", serif';
-  ctx.fillText(config.subtitle || config.title, 512, 1020);
-  ctx.font = "18px Arial";
-  ctx.fillText(config.edition || "ART STUDY", 512, 1337);
-  ctx.beginPath();
-  ctx.moveTo(460, 1113);
-  ctx.lineTo(564, 1113);
-  ctx.stroke();
-  return canvasTexture(c);
+  return canvasTexture(createBackCanvas(config, image));
 }
 function addShadow() {
   const c = document.createElement("canvas");
@@ -277,10 +111,22 @@ function notice(message) {
 }
 async function init() {
   refreshIcons();
-  const response = await fetch("./card-config.json");
-  if (!response.ok) throw Error("作品配置未找到");
-  config = await response.json();
-  document.title = config.title + " · 白相";
+  const settingsHome = $("parameter-panel").parentElement;
+  const responsiveSettings = () => {
+    const panel = $("parameter-panel");
+    if (matchMedia("(max-width:960px), (max-height:820px)").matches) document.querySelector("main").append(panel);
+    else settingsHome.append(panel);
+  };
+  responsiveSettings();
+  window.addEventListener("resize", responsiveSettings);
+  loading.update("正在读取作品信息");
+  const response = await fetch("./card-config.json", { cache: "no-cache" });
+  if (!response.ok) throw Error(`作品配置未找到（HTTP ${response.status}）`);
+  try { config = await response.json(); }
+  catch { throw Error("作品配置格式有误，请检查 card-config.json"); }
+  if (loading.terminal) return;
+  if (!config || typeof config.title !== "string" || !config.assets) throw Error("作品配置缺少标题或素材清单");
+  document.title = config.title + " · " + (config.ui?.brandName || "光屿");
   for (const [id, key] of [
     ["card-title", "title"],
     ["subtitle", "subtitle"],
@@ -293,14 +139,11 @@ async function init() {
   $("about-title").textContent = [config.subtitle, config.title]
     .filter(Boolean)
     .join(" / ");
-  const brand = document.querySelector(".wordmark-cn");
-  if (brand) brand.firstChild.textContent = config.ui?.brandName || "光屿";
-  const brandEn = document.querySelector(".wordmark-en");
-  if (brandEn) brandEn.textContent = config.ui?.brandEnglish || "HOLO ATELIER";
-  for (const [key, value] of Object.entries(config.ui?.palette || {})) {
-    if (["ink", "muted", "accent", "focus", "control", "line"].includes(key)) document.documentElement.style.setProperty(`--${key}`, value);
-  }
+  applyBrand(config, document);
+  presentation = viewSettings(config);
+  loading.update("正在准备字体与画面");
   await document.fonts.load("500 42px Atelier");
+  if (loading.terminal) return;
   try {
     renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -322,32 +165,55 @@ async function init() {
     } catch (retryError) {
       // No WebGL at all (browser hardware acceleration off): switch to the
       // CSS-3D card — still layered 3D, just without the shader engine.
-      fallback3D(retryError);
+      await fallback3D(retryError);
       return;
     }
   }
   renderer.setClearColor(config.appearance?.background || "#fafafa", 1);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(viewerPixelRatio(devicePixelRatio, matchMedia("(pointer:coarse)").matches, stage.clientWidth));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   stage.append(renderer.domElement);
   renderer.domElement.setAttribute("aria-hidden", "true");
   const textureLoader = new THREE.TextureLoader();
-  const textures = await Promise.all(
-    ["subject", "background", "text"].map((name) =>
-      textureLoader.loadAsync(config.assets[name]),
-    ),
-  );
-  const backArt = config.assets.back ? await textureLoader.loadAsync(config.assets.back) : null;
-  const line = config.assets.lineart
-    ? await textureLoader.loadAsync(config.assets.lineart)
+  const names = ["subject", "background", "text", "back", "lineart", "effects"].filter(name => config.assets[name]);
+  const labels = { subject: "主体图片", background: "背景图片", text: "文字图片", back: "背面图片", lineart: "线稿图片", effects: "特效图片", model: "卡片模型" };
+  for (const name of ["subject", "background", "text", "model"]) {
+    if (!config.assets[name]) throw Error(`作品配置缺少${labels[name]}`);
+  }
+  const total = names.length + 1;
+  let completed = 0;
+  loading.update(`正在载入素材 · 0 / ${total}`, 0, total);
+  const tracked = async (name, task) => {
+    try {
+      const resource = await task();
+      if (resource.isTexture) {
+        if (loading.terminal) resource.dispose();
+        else loadedTextures.add(resource);
+      }
+      completed++;
+      loading.update(`正在载入素材 · ${completed} / ${total}`, completed, total);
+      return resource;
+    } catch { throw Error(`${labels[name]}加载失败，请检查文件或网络连接`); }
+  };
+  const resources = await Promise.all([
+    ...names.map(name => tracked(name, () => textureLoader.loadAsync(config.assets[name]))),
+    tracked("model", () => new GLTFLoader().loadAsync(config.assets.model)),
+  ]);
+  if (loading.terminal) { for (const texture of loadedTextures) texture.dispose(); return; }
+  const gltf = resources.pop();
+  const artwork = Object.fromEntries(names.map((name, index) => [name, resources[index]]));
+  const textures = [artwork.subject, artwork.background, artwork.text];
+  const backArt = artwork.back;
+  const line = artwork.lineart
+    ? artwork.lineart
     : new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   line.needsUpdate = true;
   // Optional effects overlay (sparks/thorn deco): drawn between subject and text.
   // A transparent 1x1 fallback keeps the front shader valid without it.
   const hasFx = !!config.assets.effects;
   const effects = hasFx
-    ? await textureLoader.loadAsync(config.assets.effects)
+    ? artwork.effects
     : new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
   effects.colorSpace = THREE.NoColorSpace;
   if (!hasFx) effects.needsUpdate = true;
@@ -412,7 +278,7 @@ async function init() {
     materials[role].transparent = true;
     materials[role].depthWrite = role !== "web_effects";
   }
-  const gltf = await new GLTFLoader().loadAsync(config.assets.model);
+  loading.update("正在呈现全息效果", total, total);
   root = new THREE.Group();
   root.add(gltf.scene);
   scene.add(root);
@@ -439,18 +305,6 @@ async function init() {
   }
   if (config.sourceMode === "relief" && !reliefLayers.subject.length) throw Error("缺少独立人物层，请重新生成模型");
   addShadow();
-  const settingsHome=$('parameter-panel').parentElement;
-  const responsiveSettings=()=>{
-    const panel=$('parameter-panel');
-    if(matchMedia('(max-width:960px)').matches)document.querySelector('main').append(panel);
-    else settingsHome.append(panel);
-  };
-  responsiveSettings();window.addEventListener('resize',responsiveSettings);
-  setupControls();
-  document
-    .querySelectorAll("button[disabled],input[disabled]")
-    .forEach((el) => (el.disabled = false));
-  new ResizeObserver(resize).observe(stage);
   resize();
   renderer.compile(scene, camera);
   renderer.render(scene, camera);
@@ -460,10 +314,17 @@ async function init() {
   if (shaderErrors.length) {
     renderer.dispose();
     renderer.domElement.remove();
-    fallback3D(new Error("当前设备无法显示卡面材质"));
+    await fallback3D(new Error("当前设备无法显示卡面材质"));
     return;
   }
-  $("loading").remove();
+  if (!loading.finish()) return;
+  // Bind controls only after the shader path is usable. Otherwise fallback
+  // would inherit WebGL listeners that zoom twice or touch a disposed renderer.
+  setupControls();
+  document
+    .querySelectorAll("button[disabled],input[disabled]")
+    .forEach((el) => (el.disabled = false));
+  new ResizeObserver(resize).observe(stage);
   root.rotation.set(targetX, targetY, 0);
   window.__holo = {
     ready: true,
@@ -476,20 +337,23 @@ async function init() {
     flip,
     modelSource: config.assets.model,
     layers: reliefLayers,
-    getState: () => ({ auto, flipped, finish, zoom }),
+    getState: () => ({ auto, flipped, finish, zoom, dragging }),
   };
   setFinish(config.appearance?.finish || "pearl");
+  settingsPanel = bindSettingsPanel({ document, config, notice, read: readPresentation, apply: applyPresentation,
+    resetPose });
   setAuto(!media.matches);
-  renderer.setAnimationLoop(animate);
+  renderLoop = createRenderLoop({ render: animate, continuous: () => !media.matches || auto, visible: () => !document.hidden && !!window.__holo?.ready });
+  document.addEventListener("visibilitychange", () => document.hidden ? renderLoop.pause() : renderLoop.wake());
+  renderLoop.wake();
 }
 // Layered 3D card built with CSS 3D transforms — used only when WebGL is
 // unavailable (browser hardware acceleration off). It keeps the real depth
 // stack: layers float at their configured offsets, the card tilts with the
 // pointer, sways when idle, flips to a gold back, and the foil sheen follows
 // the cursor. If WebGL comes back, the full shader engine takes over instead.
-function fallback3D(error) {
+async function fallback3D(error) {
   console.warn("[holo-card] WebGL unavailable, using CSS-3D fallback:", error);
-  const roleZ = { background: -48, effects: -25, subject: -8, lineart: 24, text: 28 };
   const wrap = document.createElement("div");
   wrap.className = "fallback3d";
   const flipper = document.createElement("div");
@@ -513,7 +377,8 @@ function fallback3D(error) {
     // White-background line art must not cover the subject: multiply drops the
     // white base and keeps only the dark contour strokes on top of the artwork.
     if (name === "lineart") layer.style.mixBlendMode = "multiply";
-    layers.set(name, { el: layer, z: roleZ[name] });
+    layer.dataset.layer = name;
+    layers.set(name, { el: layer });
   }
   const foil = document.createElement("div");
   foil.className = "foil3d";
@@ -529,52 +394,70 @@ function fallback3D(error) {
   flipper.append(card);
   wrap.append(flipper);
   stage.append(wrap);
-  $("loading").remove();
+  const images = [...front.querySelectorAll("img")];
+  if (config.assets.back) {
+    const image = new Image(); image.src = config.assets.back; images.push(image);
+  }
+  await Promise.all(images.map(async image => {
+    try { await image.decode(); }
+    catch { throw Error(`${image.src.split('/').pop()}加载失败，请检查文件或网络连接`); }
+  }));
+  if (!loading.finish()) { wrap.remove(); return; }
 
   // ---- interaction state (independent of the WebGL path) ----
   let tx = -0.03, ty = -0.06, curX = 0, curY = 0, curFlip = 0, flipTarget = 0;
   let lastMove = 0, sway = !media.matches;
-  let scale = 1, depthScale = 1, bgScale = 1;
+  let scale = 1;
+  const depths = { ...presentation.parameters };
+  let fallbackLoop;
   const applyLayers = () => {
-    for (const [name, { el, z }] of layers) {
-      const s = name === "background" ? bgScale : 1;
-      el.style.transform = `translateZ(${(z * depthScale * s).toFixed(2)}px)`;
+    const positions = fallbackLayerDepths(depths);
+    for (const [name, { el }] of layers) {
+      el.style.transform = `translateZ(${positions[name].toFixed(2)}px)`;
     }
   };
   applyLayers();
-  stage.addEventListener("pointermove", (e) => {
-    const r = stage.getBoundingClientRect();
-    tx = Math.max(-0.5, Math.min(0.5, ((e.clientY - r.top) / r.height - 0.5) * 0.9));
-    ty = Math.max(-0.5, Math.min(0.5, ((e.clientX - r.left) / r.width - 0.5) * 1.1));
-    lastMove = performance.now();
-    const c = card.getBoundingClientRect();
-    front.style.setProperty("--mx", Math.round(((e.clientX - c.left) / c.width) * 100) + "%");
-    front.style.setProperty("--my", Math.round(((e.clientY - c.top) / c.height) * 100) + "%");
+  bindCardGestures(stage, {
+    start() { sway = false; dragging = true; stage.classList.add("dragging"); },
+    rotate(dx, dy) {
+      tx = THREE.MathUtils.clamp(tx + dy * .004, -.5, .5);
+      ty = THREE.MathUtils.clamp(ty + dx * .006, -.5, .5);
+      lastMove = performance.now();
+      front.style.setProperty("--mx", `${50 + ty * 70}%`);
+      front.style.setProperty("--my", `${50 + tx * 70}%`);
+      fallbackLoop.wake(true);
+    },
+    zoom(factor) { zoom = THREE.MathUtils.clamp(zoom * factor, .82, 1.35); fallbackLoop.wake(true); },
+    end() { dragging = false; stage.classList.remove("dragging"); },
   });
-  stage.addEventListener("pointerleave", () => { lastMove = 0; });
   const frame = (now) => {
     if (sway && now - lastMove > 1500) {
       const t = now / 1000;
       tx = Math.sin(t * 0.7) * 0.07 + 0.05;
       ty = Math.sin(t * 0.55) * 0.11 - 0.18;
     }
-    curX += (tx - curX) * 0.08;
-    curY += (ty - curY) * 0.08;
-    curFlip += (flipTarget - curFlip) * 0.12;
-    flipper.style.transform = `rotateX(${curX.toFixed(4)}rad) rotateY(${curY.toFixed(4)}rad) scale(${scale})`;
+    const ease = media.matches ? 1 : .18;
+    curX += (tx - curX) * ease;
+    curY += (ty - curY) * ease;
+    curFlip += (flipTarget - curFlip) * ease;
+    flipper.style.transform = `rotateX(${curX.toFixed(4)}rad) rotateY(${curY.toFixed(4)}rad) scale(${scale * zoom})`;
     card.style.transform = `rotateY(${curFlip.toFixed(4)}rad)`;
-    requestAnimationFrame(frame);
   };
-  requestAnimationFrame(frame);
+  fallbackLoop = createRenderLoop({ render: frame, continuous: () => sway, visible: () => !document.hidden });
+  document.addEventListener("visibilitychange", () => document.hidden ? fallbackLoop.pause() : fallbackLoop.wake());
+  media.addEventListener("change", () => { if (media.matches) sway = false; fallbackLoop.wake(); });
+  fallbackLoop.wake();
 
   // ---- control wiring (mirrors the WebGL controls) ----
   const setFlip = (value) => {
     flipped = value;
     flipTarget = flipped ? Math.PI : 0;
     faceLabels();
+    fallbackLoop.wake(true);
   };
   const setAutoUI = (value) => {
     sway = value;
+    fallbackLoop.wake();
     const b = $("auto");
     if (!b) return;
     b.setAttribute("aria-pressed", String(value));
@@ -586,6 +469,7 @@ function fallback3D(error) {
     refreshIcons();
   };
   const fallbackFinish = (value) => {
+    finish = value;
     front.classList.remove("finish-gold", "finish-silver", "finish-pearl", "finish-original");
     front.classList.add("finish-" + value);
     document
@@ -597,12 +481,16 @@ function fallback3D(error) {
   };
   $("info").disabled = false;
   $("info").onclick = () => $("about").showModal();
+  $("close-about").onclick = () => $("about").close();
   $("front").disabled = false;
   $("front").onclick = () => setFlip(false);
   $("back").disabled = false;
   $("back").onclick = () => setFlip(true);
   const depthToggleFallback = $("depth-toggle");
-  if (depthToggleFallback) depthToggleFallback.onclick = () => toggleSettings();
+  if (depthToggleFallback) {
+    depthToggleFallback.disabled = false;
+    depthToggleFallback.onclick = () => toggleSettings();
+  }
   // The hide/show control cluster that used to sit under the card is gone: it rendered
   // as four unlabelled, icon-less circles there. Flipping stays available through the
   // 正面/背面 buttons and dragging already stops the idle sway, so only the panel's
@@ -611,54 +499,78 @@ function fallback3D(error) {
     $(id).disabled = false;
     $(id).addEventListener("input", () => {
       const v = Number($(id).value);
-      $(output).textContent = v.toFixed(decimals);
+      $(output).textContent = id === 'foil' ? Math.round(v * 100) + '%' : v.toFixed(decimals);
       fn(v);
+      fallbackLoop.wake(true);
     });
   };
   bindRange("scale", "scale-value", (v) => { scale = v; });
   bindRange("depth", "depth-value", (v) => {
-    depthScale = Math.max(0.1, 1 + v * 4);
+    depths.subjectDepth = v;
     applyLayers();
   });
   bindRange("bg-depth", "bg-depth-value", (v) => {
-    bgScale = Math.max(0.1, 1 + v * 4);
+    depths.backgroundDepth = v;
     applyLayers();
+  });
+  bindRange("fx-depth", "fx-depth-value", (v) => {
+    depths.effectsDepth = v; applyLayers();
   });
   document.querySelectorAll("[data-finish]").forEach((b) => {
     b.disabled = false;
-    b.onclick = () => fallbackFinish(b.dataset.finish);
+    b.onclick = () => { fallbackFinish(b.dataset.finish); fallbackLoop.wake(); };
   });
   bindRange("foil", "foil-value", (v) => {
     front.style.setProperty("--foil-amount", v);
+    $("foil-value").textContent = Math.round(v * 100) + '%';
   }, 0);
   $("foil-value").textContent = Math.round(Number($("foil").value) * 100) + "%";
   front.style.setProperty("--foil-amount", $("foil").value);
-  // Seed scale from config; depth sliders start neutral (the layered base
-  // offsets above already encode the default depth profile).
+  // Seed the authored profile; every depth maps independently, preserving sign.
   if (config.parameters?.subjectScale) {
     scale = config.parameters.subjectScale;
     $("scale").value = config.parameters.subjectScale;
   }
   applyLayers();
   fallbackFinish(config.appearance?.finish || "gold");
+  const applyFallback = state => {
+    presentation = state;
+    for (const [id] of settings) {
+      setRange(id, state.parameters[parameterKey(id)]);
+      $(id).dispatchEvent(new Event('input'));
+    }
+    fallbackFinish(state.appearance.finish);
+    applyBrand(exportSettings(config, state), document);
+    fallbackLoop.wake(true);
+  };
+  applyFallback(presentation);
+  settingsPanel = bindSettingsPanel({ document, config, notice, read: readPresentation, apply: applyFallback,
+    resetPose() { tx = -.03; ty = -.06; zoom = 1; sway = false; setFlip(false); } });
   notice("浏览器未开启 WebGL：已用轻量 3D 模式显示（层次保留）");
-  window.__holo = { ready: false, error: String(error), fallback3d: true };
+  window.__holo = { ready: false, error: String(error), fallback3d: true,
+    getState: () => ({ flipped, zoom, dragging }) };
 }
 function resize() {
   if (!renderer) return;
   const width = stage.clientWidth,
     height = stage.clientHeight;
   const aspect = width / height;
+  if (!width || !height) return;
   const halfHeight = Math.max(config.sourceMode === "relief" ? 6.25 : 5.45, 4.5 / aspect) / zoom;
   camera.left = -halfHeight * aspect;
   camera.right = halfHeight * aspect;
   camera.top = halfHeight;
   camera.bottom = -halfHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
+  const pixelRatio = viewerPixelRatio(devicePixelRatio, matchMedia("(pointer:coarse)").matches, width);
+  if (renderer.getPixelRatio() !== pixelRatio) renderer.setPixelRatio(pixelRatio);
+  renderer.getSize(viewportSize);
+  if (viewportSize.x !== width || viewportSize.y !== height) renderer.setSize(width, height);
+  renderLoop?.wake();
 }
 function setAuto(value) {
   auto = value;
+  renderLoop?.wake();
   const button = $("auto");
   if (!button) return;
   button.setAttribute("aria-pressed", String(auto));
@@ -685,6 +597,31 @@ function setFinish(value) {
     original: "原画",
   }[value];
   $("foil").disabled = value === "original";
+  renderLoop?.wake();
+}
+function readPresentation() {
+  return { ...presentation, parameters: Object.fromEntries(settings.map(([id]) => [parameterKey(id), Number($(id).value)])),
+    appearance: { ...presentation.appearance, finish } };
+}
+function parameterKey(id) {
+  return { foil: 'foil', scale: 'subjectScale', depth: 'subjectDepth', 'fx-depth': 'effectsDepth', 'bg-depth': 'backgroundDepth' }[id];
+}
+function setRange(id, value) {
+  const input = $(id);
+  // Preserve valid signed depths/scales from imported configs, even outside the ordinary slider range.
+  input.min = Math.min(Number(input.min), value);
+  input.max = Math.max(Number(input.max), value);
+  const fraction = String(value).split('.')[1];
+  if (fraction?.length > 2 || /e/i.test(String(value))) input.step = 'any';
+  input.value = value;
+}
+function applyPresentation(state) {
+  presentation = state;
+  settings.forEach(([id, name]) => { setRange(id, state.parameters[parameterKey(id)]); updateInput(id, name); });
+  setFinish(state.appearance.finish);
+  applyBrand(exportSettings(config, state), document);
+  renderer.setClearColor(state.appearance.background, 1);
+  renderLoop?.wake(true);
 }
 function faceLabels() {
   $("front").setAttribute("aria-pressed", String(!flipped));
@@ -702,15 +639,11 @@ function flip(value = !flipped) {
 // lightbox diorama — subject / effects / text each float on their own plane
 // (offsets in card-space units, card half-height ≈ 5.45).
 function layoutRelief() {
-  const subjectZ = 0.541 + 1.818 * Number($("depth").value);
-  const effectsZ = 0.541 + 1.818 * Number($("fx-depth").value);
-  const titleZ = Math.max(subjectZ, effectsZ) + 0.40;
-  for (const mesh of reliefLayers.subject) {
-    mesh.position.z = subjectZ;
-    mesh.scale.copy(mesh.userData.baseScale).multiplyScalar(1 / Number($("scale").value));
-  }
-  for (const mesh of reliefLayers.effects) mesh.position.z = effectsZ;
-  for (const mesh of reliefLayers.text) mesh.position.z = titleZ;
+  layoutReliefLayers(reliefLayers, {
+    subjectDepth: Number($("depth").value),
+    effectsDepth: Number($("fx-depth").value),
+    subjectScale: Number($("scale").value),
+  });
 }
 function updateInput(id, name) {
   const input = $(id);
@@ -720,27 +653,19 @@ function updateInput(id, name) {
     id === "foil"
       ? Math.round(input.value * 100) + "%"
       : Number(input.value).toFixed(2);
+  renderLoop?.wake(true);
 }
 function reset() {
+  settingsPanel?.reset();
+  resetPose();
+}
+function resetPose() {
   targetX = -0.035;
   targetY = -0.15;
   zoom = 1;
   flipped = false;
   setAuto(false);
   faceLabels();
-  const p = config.parameters || {};
-  const defaults = {
-    foil: p.foil ?? 0.52,
-    scale: p.subjectScale ?? 1,
-    depth: p.subjectDepth ?? 0.32,
-    "fx-depth": p.effectsDepth ?? 0.14,
-    "bg-depth": p.backgroundDepth ?? -0.18,
-  };
-  settings.forEach(([id, name]) => {
-    $(id).value = defaults[id];
-    updateInput(id, name);
-  });
-  setFinish(config.appearance?.finish || "pearl");
   resize();
 }
 function toggleSettings(show = $("parameter-panel").hidden) {
@@ -759,47 +684,40 @@ function setupControls() {
     $("scale").min="0.92";$("scale").max="1.3";
   }
   settings.forEach(([id, name]) => {
-    $(id).value = uniforms[name].value;
+    setRange(id, uniforms[name].value);
     updateInput(id, name);
     $(id).addEventListener("input", () => updateInput(id, name));
   });
-  stage.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    dragging = true;
-    setAuto(false);
-    lastPointer = { x: e.clientX, y: e.clientY };
-    stage.setPointerCapture(e.pointerId);
-    stage.classList.add("dragging");
-    stage.focus({ preventScroll: true });
+  bindCardGestures(stage, {
+    start() {
+      dragging = true;
+      setAuto(false);
+      stage.classList.add("dragging");
+      renderLoop?.wake(true);
+    },
+    rotate(dx, dy) {
+      const base = flipped ? Math.PI : 0;
+      targetY = THREE.MathUtils.clamp(targetY + dx * 0.006, base - 0.65, base + 0.65);
+      targetX = THREE.MathUtils.clamp(targetX + dy * 0.004, -0.36, 0.36);
+      renderLoop?.wake(true);
+    },
+    zoom(factor) {
+      zoom = THREE.MathUtils.clamp(zoom * factor, 0.82, 1.35);
+      resize();
+      renderLoop?.wake(true);
+    },
+    end() {
+      dragging = false;
+      stage.classList.remove("dragging");
+    },
   });
-  stage.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const base = flipped ? Math.PI : 0;
-    targetY = THREE.MathUtils.clamp(
-      targetY + (e.clientX - lastPointer.x) * 0.006,
-      base - 0.65,
-      base + 0.65,
-    );
-    targetX = THREE.MathUtils.clamp(
-      targetX + (e.clientY - lastPointer.y) * 0.004,
-      -0.36,
-      0.36,
-    );
-    lastPointer = { x: e.clientX, y: e.clientY };
-  });
-  const release = () => {
-    dragging = false;
-    stage.classList.remove("dragging");
-  };
-  ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) =>
-    stage.addEventListener(type, release),
-  );
   stage.addEventListener(
     "wheel",
     (e) => {
       e.preventDefault();
-      zoom = THREE.MathUtils.clamp(zoom - e.deltaY * 0.001, 0.82, 1.05);
+      zoom = THREE.MathUtils.clamp(zoom - e.deltaY * 0.001, 0.82, 1.35);
       resize();
+      renderLoop?.wake(true);
     },
     { passive: false },
   );
@@ -839,6 +757,7 @@ function setupControls() {
     if (e.key === "ArrowDown") targetX += 0.06;
     targetY = THREE.MathUtils.clamp(targetY, base - 0.65, base + 0.65);
     targetX = THREE.MathUtils.clamp(targetX, -0.36, 0.36);
+    renderLoop?.wake(true);
   });
   $("front").onclick = () => flip(false);
   $("back").onclick = () => flip(true);
@@ -866,11 +785,12 @@ function setupControls() {
   $("save").onclick = saveCard;
   media.addEventListener("change", () => {
     if (media.matches) setAuto(false);
+    renderLoop?.wake();
   });
   renderer.domElement.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
-    renderer.setAnimationLoop(null);
-    notice("图形显示已暂停，请刷新页面恢复");
+    renderLoop?.pause();
+    showRuntimeError("图形显示已暂停，请重新加载恢复");
   });
 }
 function saveCard() {
@@ -936,34 +856,26 @@ function animate(now) {
   shadow.scale.x = 1 - Math.abs(Math.sin(root.rotation.y)) * 0.14;
   renderer.render(scene, camera);
 }
-const fail = (message) => {
-  const loading = $("loading");
-  if (loading && window.__holo && window.__holo.ready) return;
-  loading?.classList.add("error");
-  loading?.setAttribute("role", "alert");
-  loading?.replaceChildren();
-  const msg = document.createElement("span");
-  msg.textContent = message;
-  const retry = document.createElement("button");
-  retry.textContent = "重新加载";
-  retry.onclick = () => location.reload();
-  loading?.append(msg, retry);
+function showRuntimeError(message) {
+  createLoadingView($("loading")).fail(message);
   window.__holo = { ready: false, error: message };
-};
-const LOAD_TIMEOUT_MS = 12000;
-let settled = false;
-Promise.race([
-  init().then(() => {
-    settled = true;
-  }),
-  new Promise((_, reject) =>
-    setTimeout(
-      () => reject(new Error("卡片加载超时，请检查网络或刷新重试")),
-      LOAD_TIMEOUT_MS,
-    ),
-  ),
-]).catch((error) => {
-  if (settled) return;
-  console.error(error);
-  fail("作品暂时无法加载。\n" + error.message);
+  document.querySelectorAll("button, input, select").forEach(element => {
+    if (!$("loading").contains(element) && element.id !== "close-about") element.disabled = true;
+  });
+}
+function fail(message) {
+  if (!loading.fail(message)) return;
+  renderLoop?.pause();
+  renderer?.dispose();
+  renderer?.domElement.remove();
+  renderer = null;
+  for (const texture of loadedTextures) texture.dispose();
+  loadedTextures.clear();
+  showRuntimeError(message);
+}
+const loadTimeout = setTimeout(() => fail("加载时间较长，请检查网络连接后重新加载"), 30000);
+init().then(() => clearTimeout(loadTimeout)).catch(error => {
+  clearTimeout(loadTimeout);
+  console.warn("[holo-card]", error);
+  fail(error.message);
 });

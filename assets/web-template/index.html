@@ -8,7 +8,6 @@
     <title>光屿 · Holo Atelier</title>
     <link rel="stylesheet" href="./style.css" />
     <link rel="stylesheet" href="./ui.css" />
-    <script type="module" src="./app.bundle.js"></script>
   </head>
   <body>
     <header class="masthead">
@@ -48,17 +47,22 @@
           tabindex="0"
           role="group"
           aria-label="可旋转的全息卡片"
+          aria-describedby="interaction-hint"
+          aria-busy="true"
         >
           <div id="loading" class="loading" role="status">
-            <span class="loading-line"></span><span>正在装裱作品</span>
+            <span class="loading-kicker">HOLO ATELIER</span>
+            <span class="loading-message">正在读取作品信息</span>
+            <progress max="1" value="0" aria-label="已完成素材数量"></progress>
+            <button type="button" hidden>重新加载</button>
           </div>
         </div>
         <div class="stage-note" aria-hidden="true">
-          <span>拖动探索层次 · 滚轮缩放</span><span id="view-label">01 / FRONT</span>
+          <span id="interaction-hint"><span class="hint-desktop">拖动旋转 · 滚轮缩放</span><span class="hint-touch">单指旋转 · 双指缩放</span></span><span id="view-label">01 / FRONT</span>
         </div>
         <div class="parameter-panel" id="parameter-panel">
           <div class="panel-heading">
-            <span>景深与构图</span>
+            <span>构图与景深</span>
           </div>
           <label class="range-row" for="scale"
             ><span>画面比例</span><output id="scale-value"></output
@@ -76,6 +80,12 @@
             ><span>底纹景深</span><output id="bg-depth-value"></output
             ><input id="bg-depth" type="range" min="-0.4" max="0.4" step="0.01"
           /></label>
+          <div class="settings-actions" role="group" aria-label="配置管理">
+            <button id="export-settings" type="button" disabled>导出配置</button>
+            <button id="import-settings" type="button" disabled>导入配置</button>
+            <button id="reset-settings" type="button" disabled>恢复默认</button>
+          </div>
+          <input id="settings-file" type="file" accept=".json,application/json" hidden />
         </div>
       </section>
       <section class="artwork-bar" aria-label="作品与材质">
@@ -98,10 +108,10 @@
             type="button"
             aria-controls="parameter-panel"
             aria-expanded="true"
-            aria-label="显示或隐藏景深调整"
-            title="显示或隐藏景深调整"
+            aria-label="显示或隐藏构图与参数调整"
+            title="显示或隐藏构图与参数调整"
           >
-            <i data-lucide="sliders-horizontal"></i><span>景深调整</span>
+            <i data-lucide="sliders-horizontal"></i><span>构图与参数</span>
           </button>
           <div class="finish-control">
           <div class="finish-heading">

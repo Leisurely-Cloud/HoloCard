@@ -2,6 +2,8 @@
 
 Decide character or object, title, subtitle, action, art medium, palette, rarity and card aspect from the user. State assumptions only where they matter. Preserve reference identity when asked, and never invent text that claims official affiliation.
 
+Inspect the actual reference and finished layers before authoring the frame, typography, back and viewer treatment. Follow [style-matching.md](style-matching.md) to carry the same medium, line character, colors and mood through those elements. A matching dominant color alone does not establish a coherent design.
+
 Everything lands on one shared portrait canvas, normally 1024×1536. Reserve roughly the top 15% and bottom 15% for typography, keep a complete readable silhouette, and keep the framing identical across layers — layers that were produced on different crops cannot be registered afterwards.
 
 ## Subject

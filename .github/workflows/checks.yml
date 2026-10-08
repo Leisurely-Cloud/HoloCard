@@ -1,0 +1,56 @@
+name: Regression checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.9'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.13'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install image dependencies
+        run: python -m pip install Pillow numpy
+      - name: Pipeline regression tests
+        run: python scripts/test_pipeline.py
+      - name: Transparency regression tests
+        run: python scripts/test_checkerboard.py
+      - name: Viewer regression tests
+        run: node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
+      - name: Install viewer dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix assets/web-template
+      - name: Bundle viewer
+        run: python -c "import sys; sys.path.insert(0, 'scripts'); from viewer_build import bundle_viewer; bundle_viewer('assets/web-template')"
+      - name: Audit and package skill
+        run: python scripts/package_skill.py . --out ../ruic-card-skill.zip

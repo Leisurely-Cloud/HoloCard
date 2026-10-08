@@ -1,208 +1,207 @@
-## Leisurely-Cloud 的增强版本
+# RuiC Card Skill
 
-基于 [HRuiCcc/RuiC-card-skill](https://github.com/HRuiCcc/RuiC-card-skill) 的 fork，保留原项目 MIT 许可证与作者署名。
+**中文** | [English](README.en.md)
 
-新增与改进：
-- 专属主题背面：自动校验和复制 back.png，打包进 Blender；网页精确排版标题与编号，并加入随视角变化的光泽。
-- 破框浮雕：人物、水流等特效与标题独立分层，特效景深单独生效，修复透明标题牌重叠问题。
-- 界面与手机排版：主题标识、信息/保存按钮、正背面切换、材质标签、景深面板；品牌与配色可配置。
-- 修复 Blender 下载请求和无特效层的网页验证。
+基于 Blender 与 Three.js 的交互式全息卡片生成工具。项目提供 Agent Skill、分层素材校验、场景构建、网页打包与浏览器验证流程，输出可编辑的 Blender 工程和可独立运行的卡片展示页面。
 
-详细配置见 [背面与浮雕说明](references/backs-and-relief.md)。新版流水线实测构建成功，网页交互 33/33 项通过。
+本仓库由 [Leisurely-Cloud](https://github.com/Leisurely-Cloud) 维护，基于 [HRuiCcc/RuiC-card-skill](https://github.com/HRuiCcc/RuiC-card-skill) 开发。
 
----
+## 功能
 
-# ✦ RuiC Card Skill
+| 功能 | 说明 |
+| --- | --- |
+| 分层视差 | 根据观察角度调整主体、背景与特效的相对位置 |
+| 浮雕模式 | 将人物、特效与标题拆分为独立几何层，支持破框构图 |
+| 全息材质 | 提供珠光、银箔、烫金和原画显示模式，可调整光泽 |
+| 主题背面 | 支持独立背面插画，并在网页中排版标题、编号与系列信息 |
+| 交互控制 | 支持鼠标与触摸旋转、双指缩放、翻面、景深调整及 PNG 截图下载 |
+| 图片风格匹配 | 制作时分析图片的画法、线条、配色与氛围，配套设计字体、边框、背面及材质 |
+| 参数保存 | 支持导出、导入 JSON 与恢复作品默认设置 |
+| 界面配置 | 支持品牌名称、部分配色参数及移动端布局 |
+| 可编辑输出 | 保留分层 PNG、卡片配置、Blender 场景与网页资源 |
+| 自动验证 | 检查网页交互、资源加载、截图下载、窄屏布局与减弱动态效果设置 |
 
-[English](README.en.md) | **中文**
+## 效果演示
 
-> 一个**通用 Agent Skill**：不挑宿主，**多模态模型都能用**——把小时候文具店门口那种会闪的全息卡**复刻**到浏览器里。
-> 说一句话，就得到一张会随视角流光、带层次景深的 3D 闪卡网页，外加一个可以随便改的 Blender 工程。
+下图来自上游项目，用于展示卡片旋转与分层效果；实际外观取决于素材、配置和渲染环境。
 
-小时候买不起的闪卡，现在你想印谁就印谁。这是你的私人卡牌工坊。
+![上游项目的分层卡片演示](assets/demo-after.gif)
 
-**它是一台全自动闪卡生产线**：你给一句话或一张参考图，剩下全交给模型——
+[查看演示视频](assets/demo-after.mp4)
 
-1. **画四层图**：主体、背景、线稿、文字，画在同一块画布、同一套坐标里
-2. **搭 3D 场景**：Blender 建卡牌几何，把四层图按景深在空间里"撑开"——主体前凸、背景后缩
-3. **铺全息材质**：镭射彩虹的相位跟着视角走，转到哪闪到哪；烫金 / 银箔 / 珠光 / 原画四种质感
-4. **组装网页**：Three.js 查看器打包成单文件，起本地服务，打开页面实测拖拽、翻面、滑块、手机布局
-5. **交付**：网页链接 + `card.blend` 源工程 + 四层透明 PNG + `card-config.json` 配置 + 渲染图
+## 环境要求
 
-技术栈就三样：**Blender**（官方便携版自动安装，不碰系统环境）+ **Three.js**（按同一套 UV 公式重建材质）+ **Python 流水线**（画完图之后一步到位）。skill 本体只有代码和文字，装上就能用；你生成的画作、工程、模型全部待在你自己的项目目录里。
+| 组件 | 用途与要求 |
+| --- | --- |
+| Python | 3.9 或更高版本，安装 Pillow；NumPy 用于棋盘格透明背景修复 |
+| Node.js 与 npm | 网页依赖安装和打包；建议使用 Node.js 22 或更高版本运行验证脚本 |
+| Blender | 建议使用 4.5 LTS；可指定已有程序，或由流水线下载并校验便携版本 |
+| Chromium 浏览器 | Chrome、Edge 或 Chromium，用于自动化网页验证 |
+| 字体 | 所用字体应覆盖标题中的字符；可通过配置中的 `font` 指定字体文件 |
+| Agent 宿主（可选） | 使用 Skill 时，需要支持读取技能说明、执行命令及查看图片的宿主 |
 
----
+图像素材可由用户提供、从获准使用的来源获取，或由宿主的图像生成工具制作。仓库本身不提供图像生成模型或服务。
 
-## 🎬 演示
+自动下载 Blender、安装 npm 依赖及首次获取打包工具需要网络连接。Blender 下载器支持 Windows、macOS 和 Linux x64；具体安装逻辑见 [ensure_blender.py](scripts/ensure_blender.py)。
 
-### 调整前 · 图层分散
-
-初版层距：主体、特效、文字隔得较开，转动时明显"散开"：
-
-![调整前效果](assets/demo-before.gif)
-
-[▶ 观看调整前完整视频](assets/demo-before.mp4)
-
-演示效果由 **DeepSeek V4.1 Flash** 实现。
-
-### 调整后 · 层距收紧（现默认）
-
-调整后：各层收近一档，卡片整体更紧凑，仍保留层次景深——这是当前出厂默认效果：
-
-![调整后效果](assets/demo-after.gif)
-
-[▶ 观看调整后完整视频](assets/demo-after.mp4)
-
-演示效果由 **DeepSeek V4.1 Flash** 实现。
-
----
-
-## ✨ 特性
-
-- **一句话出卡**：描述或参考图 → 分层图 → 配置 → 流水线 → 网页，全程自动，你只负责想
-- **不挑宿主、不挑模型**：不绑定某一家——流水线里模型要自己画四层图、自己打开渲染帧判断对不对，所以**只要是多模态模型**（能出图、能看图），配任何读 `SKILL.md` 的宿主都能跑通
-- **真 3D 层次景深**：主体前凸、背景后缩，层与层随视角错开，不是一张平面贴图
-- **视点流光**：镭射彩虹的相位跟着视角走，转到哪闪到哪；烫金 / 银箔 / 珠光 / 原画四种卡面质感
-- **浏览器里随便玩**：拖拽旋转、翻面、景深/光泽/画面比例滑块，手机横竖屏都适配
-- **出厂自带验收**：`node scripts/verify_web.mjs <项目>` 自己拉起无头浏览器和本地服务，把拖拽、翻面、缩放、键盘、五个滑块、四种质感、截图下载、390px 窄屏、减动效逐项跑完，并且比对**真实画面帧**（不是只看滑杆读数变没变），报告和截图落进 `verification/`。macOS / Windows / Linux 都能跑，无 GUI 的容器与 root 环境同样直接可用
-- **免装 Blender**：官方便携版自动下载、SHA-256 校验后装进项目目录，不污染系统环境
-- **网页零依赖请求**：查看器打包成单文件（three + 图标全部内联），广告拦截插件无从下手；即使浏览器关了硬件加速，也有 CSS-3D 分层兜底，绝不会白屏
-- **可编辑交付**：`card.blend` 真工程 + 透明分层 PNG + `card-config.json`，想改哪层改哪层
-- **纯文本 skill**：本体只有代码和文字，一键打包 ZIP 交付，无二进制、无凭据、无缓存
-
----
-
-## 🚀 快速开始
-
-### 安装
-
-skill 本体就是 `SKILL.md` + Markdown + 纯 Python/Node 脚本，**不绑定任何宿主，也不绑定任何一家模型**——只要宿主能读 `SKILL.md`、并且跑的是**多模态模型**（能生成图像、能看图），把它放进宿主的 skills 目录就能用（目录名即 skill 名；通用约定是 `~/.agents/skills/`，别的宿主换成自己的 skills 目录即可）。
-
-### 环境
-
-- 模型：**多模态**（要能出图、也要能看图判断渲染帧；纯文本模型做不了这两步）
-- Python **3.9+** + Pillow（`ensure_blender.py` 用了 `Path.is_relative_to`，3.6 / 3.8 上会直接报错）
-- Node.js + npm
-- Blender **不用自己装**——流水线自动把官方便携版放到 `<project>/tools/`，校验 SHA-256。官方源在你的网络里被墙时，用 `RUIC_BLENDER_BASE` 指向镜像即可（例：`RUIC_BLENDER_BASE=https://mirrors.aliyun.com/blender/Blender4.5/`）；校验值取自同一个源，所以镜像要自己信得过
-- 验收脚本需要一个 Chromium 内核浏览器：系统装的 Chrome / Edge / Chromium 都行，Playwright 缓存里的 Chromium 也认，还可以用 `RUIC_BROWSER` 或 `--browser` 指定路径。**无 GUI 的 Linux（含 root / 容器）可以直接跑**：脚本在 Linux 上自动补 `--no-sandbox --disable-dev-shm-usage`
-
-### 开口
-
-> "用 RuiC-card-skill 给我做一张水墨风的锦鲤闪卡，文字用书法体，编号 No.001"
-
-或者上传参考图：
-
-> "照这张图做一张闪卡，保留人物和构图，背景换成星空"
-
-它会先把卡片规格说给你听，然后开工：画四层图 → 生成文字层 → 写配置 → 跑流水线 → 起本地服务 → 打开页面实测拖拽、翻面、滑块和手机布局 → 交付。
-
-### 你会收到
-
-| 东西 | 用来干嘛 |
-|---|---|
-| 本地网页链接（`127.0.0.1:4173`） | 拖、转、翻、拉滑块 |
-| `card.blend` | 在 Blender 里继续调材质、换灯光、出渲染 |
-| `assets/` 分层图 | 想换哪层换哪层，重跑流水线即可 |
-| `card-config.json` | 改名字、编号、稀有度 |
-| 渲染图 | 直接发 |
-| `verification/` | 自动化验收报告 + 各视角截图，证明这卡真的能拖能翻 |
-
----
-
-## 🎬 可以拿它做什么
-
-- **猫主子的传说卡**：上传照片加一句"传说稀有度、金边框"，拖一拖，猫往前凸、背景往后退
-- **独立游戏卡组**：一个角色一句描述，战士、法师、盗贼、Boss 批量出货，每张卡一个配置
-- **团队纪念卡**：头像当主体、部门色当背景、Slogan 当文字层，网页链接一发大家翻一下午
-- **节日仪式感**：背面写一句话，对方翻到背面的那一刻，闪光效果拉满
-- **发布会彩蛋**：产品卡一个链接"扫码看会闪的那种"，观众当场转起来
-- **材质实验场**：`card.blend` 里镭射、星光、线稿发光都是独立可调节点，想学怎么"闪"就打开它
-
----
-
-## ⚙️ 工作原理
-
-一句话进去，一张会闪的卡出来，中间是一条全自动流水线：
-
-```mermaid
-flowchart LR
-    A[一句话 / 参考图] -->|"分层提示词<br>art-direction"| B[四层图<br>subject·background·lineart·text]
-    B --> C[card-config.json<br>卡片规格]
-    C --> D[run_pipeline.py<br>一键流水线]
-    D -->|"validate_assets<br>透明/对齐体检"| E{体检通过?}
-    E -->|"否，重新生成"| B
-    E -->|是| F[Blender 便携版<br>自动安装 + SHA-256 校验]
-    F --> G[card.blend<br>可编辑视差场景]
-    G --> H[card.glb<br>几何 + 材质名契约]
-    H --> I[web-template<br>Three.js 查看器单文件打包]
-    I --> J[本地网页 4173<br>拖转/翻面/滑块/手机布局]
-```
-
-核心链路要点：
-
-- **四层图共用一套 UV 公式**：主体、背景、线稿、文字在 Blender 和网页里按同一公式合成，所见即所得
-- **视差不是简单贴图**：把视角方向变换进卡面坐标系、除以有界法向分量，再按带符号景深偏移 UV，才有真正的"层与层错开"
-- **全息镭射相位跟着视角走**：转到哪闪到哪，而不是只随时间循环
-- **glTF 搬不动节点图**：Blender 的自定义材质图没法经 glTF 直传，网页端用同一套公式重建 shader，并打包成单文件——多个小模块请求会被广告拦截插件误伤，单文件无懈可击
-- **Blender 装进项目里**：官方便携版按 SHA-256 校验后解压到 `<project>/tools/`，项目自带环境、互不干扰
-
----
-
-## 🔧 可以调的旋钮
-
-流水线出厂就是一套顺手的参数，也都留了口子：
-
-- **视差强度**：主体默认 scale 1.25 / depth 0.4，背景 depth -0.25，想更"跳"就往上加
-- **特效层**：`assets/effects.png` 可选，独立景深（`effectsDepth`，网页里就是「特效景深」滑块），叠在人物之上、文字之下，适合花瓣/火星/藤刺这类装饰
-- **卡框与文字**：都放 `text.png`。网页对文字层不做视差，所以边框会稳稳钉在卡边
-- **镭射条纹**：条纹密度、扭曲度、角度，以及粉-黄-蓝-白的渐变
-- **线稿发光**：强度和遮罩密度，从"淡淡勾边"到"霓虹描边"
-- **星光**：Voronoi 尺度 + 动画噪声，从零星几颗到满天星
-- **Blender 界面语言**：默认简体中文，存在项目本地配置里，一句话可换
-
----
-
-## 📁 目录一览
-
-```
-RuiC-card-skill/
-├── SKILL.md                    # 宿主读的"操作手册"
-├── references/
-│   ├── art-direction.md        # 分层画图的提示词写法、参考图处理
-│   ├── config.example.json     # 卡片配置示例
-│   └── verification.md         # 交付前的验收清单
-├── scripts/
-│   ├── ensure_blender.py       # 自动获取官方 Blender 便携版
-│   ├── build_card.py           # 生成可编辑的 Blender 场景
-│   ├── export_web.py           # 导出卡片几何
-│   ├── generate_typography.py  # 精确的透明文字层
-│   ├── validate_assets.py      # 四层图体检（棋盘格假透明图自动转真 alpha）
-│   ├── checkerboard_to_alpha.py # 棋盘格底确定性抠透明（附回归测试）
-│   ├── run_pipeline.py         # 一键流水线
-│   └── package_skill.py        # 纯文本打包成可分享的 ZIP
-└── assets/
-    └── web-template/           # 响应式 Three.js 查看器
-```
-
-skill 本体只有代码和文字，轻得很。你生成的画作、`.blend`、模型都待在你自己的输出项目里。
-
----
-
-## 📦 打包分享
-
-想发给朋友或放进仓库：
+## 安装
 
 ```bash
-python scripts/package_skill.py RuiC-card-skill --out ~/Desktop/RuiC-card-skill.zip
+git clone https://github.com/Leisurely-Cloud/RuiC-card-skill.git ruic-card-skill
+cd ruic-card-skill
+python -m pip install Pillow numpy
 ```
 
-按白名单只打包文本文件，打出来的 ZIP 干干净净，拿走就能用。
+作为 Agent Skill 使用时，将仓库放入宿主支持的技能目录，并确保宿主可以读取根目录的 [SKILL.md](SKILL.md)。技能标识为 `ruic-card-skill`，安装位置以宿主约定为准。
 
----
+调用示例：
 
-## 赞赏支持
+```text
+使用 ruic-card-skill 制作一张水墨锦鲤全息卡片。
+采用黑金配色，标题为“跃龙门”，编号为 No.001，背面使用同主题插画。
+```
 
-<div align="center">
-  <img src="assets/wechat-donate.png" width="300" alt="微信赞赏码" />
-  <p><strong>微信扫码赞赏</strong></p>
-</div>
+## 命令行使用
+
+以下命令均在仓库根目录执行。输出项目应放在仓库外，例如 `../card-project`。
+
+### 1. 准备素材与配置
+
+```text
+card-project/
+├── card-config.json
+└── assets/
+    ├── subject.png
+    ├── background.png
+    ├── lineart.png
+    ├── text.png
+    ├── effects.png     # 可选
+    └── back.png        # 可选，建议为完整卡片准备主题背面
+```
+
+所有图片使用相同尺寸，建议为 1024 × 1536。主体、文字和特效使用真实透明通道；背景与背面使用不透明图片。线稿应由主体素材提取，以保持轮廓对齐。
+
+从 [配置示例](references/config.example.json) 创建 `card-config.json`，填写标题、编号和渲染参数。缺少 `text.png` 时，流水线会根据配置生成文字层。关于构图与素材要求，参见 [美术说明](references/art-direction.md)。
+
+### 2. 构建项目
+
+```bash
+python scripts/run_pipeline.py --project ../card-project
+```
+
+指定已有 Blender：
+
+```bash
+python scripts/run_pipeline.py --project ../card-project --blender /path/to/blender
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `--project` | 输出项目路径，必须包含素材和配置 |
+| `--blender` | 可选，指定 Blender 可执行文件 |
+| `--skip-render` | 跳过 Blender 预览渲染，仍生成场景与网页 |
+| `--skip-npm` | 跳过依赖安装，要求项目中已有依赖；仍执行打包 |
+
+构建流程依次执行素材校验、Blender 场景构建、模型导出、网页组装和 JavaScript 打包。打包失败会中止流水线。
+
+### 3. 启动与验证
+
+```bash
+node ../card-project/web/server.mjs
+```
+
+默认访问地址为 [http://127.0.0.1:4173](http://127.0.0.1:4173)。可通过 `PORT` 环境变量调整端口。
+
+在另一个终端运行验证：
+
+```bash
+node scripts/verify_web.mjs ../card-project
+```
+
+验证脚本启动独立服务与无头浏览器，将报告和截图写入项目的 `verification/` 目录。浏览器可通过 `RUIC_BROWSER` 环境变量或 `--browser` 参数指定。自动检查之外，仍需检查正背面、倾斜视角和文字可读性。
+
+### 4. 作品风格与参数保存
+
+每张作品的默认效果在制作时根据实际图片设计，不提供通用主题预设。图片分析和视觉检查由 Agent 完成，静态网页读取项目配置；它不会自动识别上传图片的画风。详见[风格匹配说明](references/style-matching.md)。
+
+打开“构图与参数”面板手动调整，再用“导出配置”下载当前 `card-config.json`。“导入配置”会校验文件并应用材质、配色和景深，保留当前作品素材；“恢复默认”回到页面加载时的原始设置与正面朝向。
+
+调整暂存在当前页面。要在重新加载后保留效果，可将导出文件替换到 `web/card-config.json`。重新运行流水线前，还需将导出的 `parameters`、`appearance` 和 `ui.palette` 合并到项目根目录配置。详见[开发说明](references/development.md#presentation-settings)。
+
+## 配置说明
+
+| 配置项 | 作用 |
+| --- | --- |
+| `title`、`subtitle`、`edition`、`collection` | 卡片标题、副标题、编号与系列 |
+| `parameters` | 主体比例、各层景深及光泽参数 |
+| `sourceMode: "relief"` | 启用独立几何层的浮雕模式 |
+| `layers` | 浮雕层的尺寸、偏移、深度与图片裁切范围 |
+| `backDesign` | 网页背面文字的主色与辅助色 |
+| `ui` | 品牌名称、英文标识及支持的界面配色变量 |
+| `font` | 自动生成文字层时使用的字体文件 |
+
+流水线根据 `assets/` 下实际存在的图片生成网页资源路径。浮雕层、主题背面和界面配置的详细说明见 [背面与浮雕配置](references/backs-and-relief.md)。
+
+配置会在构建前校验，并在出错时指出字段或 JSON 的行列位置。标题不能为空；缩放与层尺寸必须为正数，景深与偏移必须为有限数值，光泽范围为 0–1。省略的可选字段继续使用现有默认值，自定义元数据会保留。重新构建时，会清理已取消的背面和特效素材，并保留模型、自定义文件与依赖缓存。
+
+## 输出文件
+
+| 路径 | 内容 |
+| --- | --- |
+| `card.blend` | 可编辑 Blender 场景，包含打包后的图像资源 |
+| `assets/` | 原始分层素材 |
+| `web/` | 本地服务器、页面、打包脚本与模型资源 |
+| `renders/` | Blender 预览图，使用 `--skip-render` 时不生成 |
+| `asset-validation.json` | 素材校验结果 |
+| `verification.json` | Blender 构建信息 |
+| `verification/` | 运行网页验证后生成的报告与截图 |
+
+浏览器通过 GLSL 重建材质效果，glTF 负责传递几何与材质角色。浏览器和 Blender 的渲染结果存在差异；背面的精确文字排版由网页额外绘制。WebGL 不可用时，查看器使用效果较简化的 CSS 3D 回退模式。
+
+## 开发与验证
+
+项目按以下职责组织：
+
+```text
+scripts/
+├── run_pipeline.py       # 流水线入口与步骤编排
+├── project_config.py     # 配置读取与素材清单
+├── viewer_build.py       # 网页组装、依赖安装与打包
+├── build_card.py         # Blender 场景构建
+├── export_web.py         # 模型导出
+├── validate_assets.py    # 素材校验
+└── verify_web.mjs        # 浏览器集成验证
+
+assets/web-template/
+├── app.js                # 查看器生命周期与交互
+├── shaders.js            # 材质着色器
+├── back-art.js           # 背面绘制与排版
+├── relief.js             # 浮雕层定位
+├── viewer-ui.js          # 品牌与界面配置
+├── style.css             # 基础布局
+└── ui.css                # 界面样式与响应式布局
+```
+
+运行回归检查：
+
+```bash
+python scripts/test_pipeline.py
+python scripts/test_checkerboard.py
+node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
+```
+
+修改网页模块后需重新生成 `app.bundle.js`。模块边界、构建方式与完整验证流程见 [开发说明](references/development.md) 和 [验证说明](references/verification.md)。
+
+[GitHub Actions](.github/workflows/checks.yml) 在提交和拉取请求时自动执行回归测试、网页打包及技能包审计，覆盖 Linux、Windows 和 macOS。涉及材质、几何或交互的改动仍需完成 Blender 构建与实际浏览器验证。
+
+打包可分发的技能文件：
+
+```bash
+python scripts/package_skill.py . --out ../ruic-card-skill.zip
+```
+
+打包器仅纳入允许的文本文件，并排除演示媒体、生成素材、依赖缓存及 Blender 工程。
+
+## 许可证与致谢
+
+本项目基于 [HRuiCcc/RuiC-card-skill](https://github.com/HRuiCcc/RuiC-card-skill)，保留原作者版权声明，代码采用 [MIT License](LICENSE)。上游演示素材保留于仓库中；生成图片、用户提供的参考素材及第三方作品的使用权不由本项目的软件许可证授予。
