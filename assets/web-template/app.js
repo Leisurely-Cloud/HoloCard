@@ -841,7 +841,7 @@ function animate(now) {
   if (document.hidden) return;
   if (!media.matches || auto) elapsed += dt;
   if (auto) {
-    targetY = Math.sin(elapsed * 0.42) * 0.23 - 0.055;
+    targetY = (flipped ? Math.PI : 0) + Math.sin(elapsed * 0.42) * 0.23 - 0.055;
     targetX = Math.sin(elapsed * 0.53) * 0.055 - 0.018;
   }
   const ease = media.matches ? 1 : 1 - Math.exp(-dt * 8);

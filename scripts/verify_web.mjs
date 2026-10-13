@@ -397,6 +397,28 @@ async function desktopPass(base, out) {
     const backShot = await cdp.shot("07-back", out);
     check("flip to the back works", flipped === true && !same(backShot, frontShot), `flipped=${flipped}`);
     check("view label follows the flip", (await cdp.eval("document.getElementById('view-label').textContent.trim()")) === "02 / BACK");
+    await cdp.eval("document.getElementById('stage').focus()");
+    const space = async () => {
+      for (const type of ["keyDown", "keyUp"])
+        await cdp.send("Input.dispatchKeyEvent", { type, key: " ", code: "Space", windowsVirtualKeyCode: 32 });
+    };
+    await space();
+    await sleep(700);
+    const backAutoA = await cdp.shot("07-back-auto-a", out);
+    const backAutoRotA = await rot();
+    await sleep(500);
+    const backAutoB = await cdp.shot("07-back-auto-b", out);
+    const backAutoRotB = await rot();
+    const backAuto = await cdp.eval("({...window.__holo.getState(),label:document.getElementById('view-label').textContent.trim()})");
+    check("auto rotation keeps the back visible and its label consistent",
+      backAuto.auto && backAuto.flipped && backAuto.label === "02 / BACK"
+      && [backAutoRotA, backAutoRotB].every(r => Math.abs(r[1] - Math.PI) < .35),
+      JSON.stringify({ ...backAuto, rotations: [backAutoRotA, backAutoRotB] }));
+    check("auto rotation animates the back", !same(backAutoA, backAutoB)
+      && Math.abs(backAutoRotA[1] - backAutoRotB[1]) > .001, `${backAutoA} -> ${backAutoB}`);
+    await space();
+    check("space pauses automatic rotation without changing the face",
+      (await cdp.eval("(()=>{const s=window.__holo.getState();return !s.auto && s.flipped})()")) === true);
     await cdp.eval("window.__holo.flip(false)");
     await sleep(900);
     check("flip back to the front works", (await cdp.eval("window.__holo.getState().flipped")) === false);
