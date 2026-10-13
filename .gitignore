@@ -25,3 +25,12 @@ node_modules/
 !assets/demo-after.gif
 !assets/demo-after.mp4
 !assets/holocard-demo.gif
+
+# Published Sage example artwork and editable project.
+!examples/sage/card.blend
+!examples/sage/preview.png
+!examples/sage/assets/*.png
+!examples/sage/web/assets/*.png
+!examples/sage/web/assets/card.glb
+!examples/sage/references/*.png
+!examples/sage/references/*.jpg

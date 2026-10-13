@@ -48,6 +48,10 @@ jobs:
         run: python scripts/test_checkerboard.py
       - name: Viewer regression tests
         run: node --test scripts/test_viewer.mjs scripts/test_experience.mjs scripts/test_settings.mjs
+      - name: Validate published Sage artwork and model
+        run: |
+          python scripts/validate_assets.py examples/sage
+          python -c "import json; from pathlib import Path; web=Path('examples/sage/web'); assets=json.loads((web/'card-config.json').read_text(encoding='utf8'))['assets']; assert all((web/name).is_file() for name in assets.values()), 'Example viewer assets are missing'; assert Path('examples/sage/card.blend').is_file(), 'Editable Blender project is missing'"
       - name: Install viewer dependencies
         run: python -c "import sys; sys.path.insert(0, 'scripts'); from viewer_build import install_dependencies; install_dependencies('assets/web-template')"
       - name: Bundle viewer
