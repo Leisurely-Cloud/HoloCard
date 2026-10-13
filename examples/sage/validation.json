@@ -1,0 +1,13 @@
+{
+  "browser_checks": {
+    "full": 70,
+    "final_desktop": 30
+  },
+  "copy_guard": {
+    "bodySelection": "none",
+    "inputSelection": "text",
+    "bodyCopyBlocked": true,
+    "inputCopyAllowed": true
+  },
+  "pipeline": "Blender scene, preview render, GLB and bundled viewer built successfully"
+}

@@ -15,6 +15,8 @@ MAGIC=[b'\x89PNG\r\n\x1a\n',b'\xff\xd8\xff',b'GIF87a',b'GIF89a',b'glTF',b'BLENDE
 def audit(root):
     root=Path(root).resolve();files=[]
     for p in sorted(root.rglob('*')):
+        # Published card examples are separate artwork projects, not skill resources.
+        if p.relative_to(root).parts[0]=='examples':continue
         if any(part in SKIP for part in p.relative_to(root).parts):continue
         if p.is_symlink():raise ValueError('Symlink not permitted: '+str(p))
         if not p.is_file():continue

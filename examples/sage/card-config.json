@@ -1,0 +1,95 @@
+{
+  "title": "贤者",
+  "subtitle": "SAGE · 生机不息",
+  "technique": "生机不息",
+  "edition": "No.005",
+  "collection": "JADE ECHO",
+  "description": "掌心凝聚治愈法球，守护队友，逆转战局。",
+  "font": "C:/Windows/Fonts/msyhbd.ttc",
+  "sourceMode": "relief",
+  "assets": {
+    "back": "./assets/back.png"
+  },
+  "appearance": {
+    "finish": "silver",
+    "background": "#f4f8f6"
+  },
+  "parameters": {
+    "subjectScale": 1,
+    "subjectDepth": 0.32,
+    "effectsDepth": 0.48,
+    "backgroundDepth": -0.22,
+    "foil": 0.18
+  },
+  "safeArea": {
+    "scale": 1,
+    "offset": [
+      0,
+      0
+    ]
+  },
+  "layers": {
+    "subject": {
+      "width": 6.9,
+      "height": 10.35,
+      "depth": 0.32,
+      "offset": [
+        0,
+        0.35
+      ]
+    },
+    "text": {
+      "depth": 0.62,
+      "crop": [
+        0,
+        0,
+        1024,
+        1280
+      ]
+    },
+    "textTitle": {
+      "width": 6.0,
+      "height": 1.47,
+      "offset": [
+        0,
+        -3.85
+      ],
+      "crop": [
+        0,
+        1280,
+        1024,
+        1536
+      ]
+    }
+  },
+  "backDesign": {
+    "primary": "#e8f7f2",
+    "secondary": "#75cbb9"
+  },
+  "ui": {
+    "brandName": "玉境",
+    "brandEnglish": "JADE ATELIER",
+    "palette": {
+      "ink": "#193b36",
+      "muted": "#6b8580",
+      "accent": "#258e7b",
+      "focus": "#227e6d",
+      "control": "#eaf3ef",
+      "line": "#d5e5dd"
+    },
+    "fonts": {
+      "display": "\"Microsoft YaHei\", \"PingFang SC\", sans-serif",
+      "body": "\"Microsoft YaHei\", sans-serif"
+    }
+  },
+  "artDirection": {
+    "medium": "官方游戏角色立绘与壁纸",
+    "observations": "白色战术长袍、黑色马尾与裤装、玉青法球；原画为锐利分面绘画，官网背景为深灰蓝与少量品牌红点。",
+    "designIntent": "保留网络角色原图，采用细玉青边框、清晰无衬线排版、低强度银箔；背面使用 Riot 官方贤者壁纸。",
+    "reviewNotes": [
+      "已检查正面、主题背面、双向倾斜与手机布局；人物脸部无遮挡，头发和法球破框，标题与脚部不重叠。",
+      "70 项完整浏览器检查通过；顶部边框调整后重新通过 30 项桌面检查。",
+      "文字选中与普通复制被限制，参数输入的选中和复制保留；配置导入导出正常。"
+    ]
+  }
+}

@@ -14,6 +14,8 @@ Run `python scripts/test_pipeline.py` and `node --test scripts/test_viewer.mjs s
 
 Keep generated card projects, images, dependency caches and credentials outside the skill. Use package_skill.py to audit a shareable ZIP.
 
+Published card examples live under the repository's `examples/` directory, with their own artwork provenance and runnable viewer. The package audit excludes this root directory entirely; binary assets elsewhere still fail the audit. Do not put skill runtime resources under `examples/`.
+
 ## Locked viewer toolchain
 
 Both the pipeline and CI install viewer dependencies with `npm ci --include=dev --include=optional --ignore-scripts --no-audit --no-fund`. Keep `package.json` and `package-lock.json` in sync. Development and platform-specific optional dependencies are included even when the caller's environment omits them, since the local esbuild package and its executable are needed to build. Dependency lifecycle scripts are disabled.

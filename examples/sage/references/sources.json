@@ -1,0 +1,15 @@
+{
+  "subject": {
+    "page": "https://playvalorant.com/en-us/agents/sage/",
+    "asset": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data/ded53d6f127a00074675eb79fde95437f2c2f521-5120x1772.png?accountingTag=VAL"
+  },
+  "fullPortrait": {
+    "asset": "https://media.valorant-api.com/agents/569fdd95-4d10-43ab-ca70-79becc718b46/fullportrait.png",
+    "host": "Community VALORANT-API mirror of Riot Games artwork",
+    "discovery": "https://valoranthub.com/agents/sage"
+  },
+  "wallpapers": {
+    "page": "https://playvalorant.com/en-us/media/",
+    "archive": "https://cmsassets.rgpub.io/sanity/files/dsfx7636/news/36f65336a0f5da6708891fb5f7df45e947322a6d.zip"
+  }
+}
