@@ -11,6 +11,7 @@ from unittest.mock import patch
 from project_config import web_config, load_config, validate_config
 from viewer_build import assemble_viewer, bundle_viewer, install_dependencies, require_build_tools
 from run_pipeline import run_pipeline
+from package_skill import audit, package
 
 
 class PipelineTests(unittest.TestCase):
@@ -29,6 +30,23 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(config['ui']['brandName'], 'Custom')
         (self.root / 'assets/back.png').unlink()
         self.assertNotIn('back', web_config(self.root)['assets'])
+
+    def test_published_artwork_is_excluded_but_other_binary_files_are_rejected(self):
+        import zipfile
+        (self.root / 'SKILL.md').write_text('Skill source', encoding='utf8')
+        demo = self.root / 'examples/sage'
+        demo.mkdir(parents=True)
+        (demo / 'subject.png').write_bytes(b'\x89PNG\r\n\x1a\nartwork')
+        (demo / 'card.blend').write_bytes(b'BLENDERproject')
+        with tempfile.TemporaryDirectory() as output:
+            archive = Path(output) / 'skill.zip'
+            package(self.root, archive)
+            with zipfile.ZipFile(archive) as z:
+                self.assertFalse(any('/examples/' in name for name in z.namelist()))
+                self.assertTrue(any(name.endswith('/SKILL.md') for name in z.namelist()))
+        (self.root / 'assets/outside.png').write_bytes(b'\x89PNG\r\n\x1a\nartwork')
+        with self.assertRaisesRegex(ValueError, 'Not an allowed source file'):
+            audit(self.root)
 
     def test_non_object_config_is_rejected(self):
         (self.root / 'card-config.json').write_text('[]', encoding='utf8')

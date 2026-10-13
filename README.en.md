@@ -13,6 +13,10 @@ Turn a description or reference image into an interactive 3D holographic card, w
 - Image-led palettes, typography, frames and themed backs.
 - Mouse and touch rotation, zoom and flip, plus PNG capture and JSON settings import/export.
 
+## Example cards
+
+- [Sage · No.005](https://github.com/Leisurely-Cloud/HoloCard/tree/main/examples/sage): online character artwork, jade/silver relief and a themed back, with a standalone viewer and Blender project. Example artwork is excluded from the Skill package.
+
 ## Installation
 
 Requires Python 3.9+, Node.js 22+ and npm. Blender 4.5 LTS is recommended; the pipeline can download it automatically, or use an existing executable with `--blender`. Browser verification requires Chrome or Edge.

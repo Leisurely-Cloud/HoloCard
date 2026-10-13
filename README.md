@@ -13,6 +13,10 @@
 - 根据图片风格设计配色、字体、边框和主题背面。
 - 鼠标与触摸旋转、缩放、翻面，支持 PNG 截图和 JSON 参数导入导出。
 
+## 示例作品
+
+- [贤者 / Sage · No.005](https://github.com/Leisurely-Cloud/HoloCard/tree/main/examples/sage)：网络角色立绘、玉青银白浮雕、主题背面，附独立网页与 Blender 工程。示例素材不包含在 Skill 安装包中。
+
 ## 安装
 
 需要 Python 3.9+、Node.js 22+ 与 npm。Blender 建议使用 4.5 LTS，可由流水线自动下载，也可通过 `--blender` 指定已有程序；浏览器验证需要 Chrome 或 Edge。
